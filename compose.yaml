@@ -1,0 +1,10 @@
+services:
+  sym-fast:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sym-fast-integration:local
+    container_name: sym-fast
+    ports:
+      - "8080:80"
+    restart: unless-stopped
