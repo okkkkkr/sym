@@ -17,3 +17,25 @@ class MethodType(StrEnum):
     PUT = "PUT"
     DELETE = "DELETE"
     PATCH = "PATCH"
+
+
+class ProductImportTaskStatus(StrEnum):
+    PENDING = "pending"
+    UPLOADING = "uploading"
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCESS = "success"
+    PARTIAL_FAILED = "partial_failed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+class ProductImportTaskItemStatus(StrEnum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class ProductImportStrategy(StrEnum):
+    CREATE_ONLY = "create_only"

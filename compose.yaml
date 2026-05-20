@@ -8,3 +8,23 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    depends_on:
+      - redis
+
+  sym-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sym-fast-integration:local
+    container_name: sym-worker
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO"]
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: sym-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"

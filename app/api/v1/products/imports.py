@@ -1,0 +1,377 @@
+import asyncio
+import os
+from collections import Counter
+from base64 import b64decode
+from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
+
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import RedirectResponse, StreamingResponse
+from tortoise.expressions import Q
+
+from app.controllers.product_import import product_import_task_controller
+from app.controllers.product_import import product_import_task_item_controller
+from app.core.dependency import DependAuth
+from app.log import logger
+from app.models import User
+from app.models.enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductImportTaskStatus
+from app.schemas.base import Success, SuccessExtra
+from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
+from app.services import product_import_upload_service, storage_service
+from app.settings import settings
+from app.tasks.product_import import run_product_import, run_product_import_task
+from app.utils.excel_export import build_xlsx_content
+
+router = APIRouter(prefix="/import")
+
+PRODUCT_IMPORT_TEMPLATE_HEADERS = [
+    "name",
+    "category_name",
+    "brand_name",
+    "desc",
+    "tag_names",
+    "product_code_custom",
+    "status",
+    "order",
+    "detail_text",
+    "detail_description_json",
+]
+
+SAMPLE_PNG_BYTES = b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnW0JkAAAAASUVORK5CYII="
+)
+
+
+def dispatch_product_import_task(task_id: int) -> None:
+    try:
+        run_product_import_task.delay(task_id)
+    except Exception as exc:
+        logger.warning("dispatch product import task via celery failed, fallback to local async run: {}", exc)
+        asyncio.create_task(run_product_import(task_id))
+
+
+def build_product_import_template_content() -> bytes:
+    return build_xlsx_content(
+        sheet_title="好物导入模板",
+        headers=PRODUCT_IMPORT_TEMPLATE_HEADERS,
+        rows=[],
+    )
+
+
+def build_product_import_example_zip() -> bytes:
+    workbook_content = build_xlsx_content(
+        sheet_title="好物导入示例",
+        headers=PRODUCT_IMPORT_TEMPLATE_HEADERS,
+        rows=[
+            [
+                "示例好物A",
+                "示例分类",
+                "示例品牌",
+                "示例简介",
+                "标签A,标签B",
+                "1001",
+                "true",
+                0,
+                "这是一段示例详情",
+                "",
+            ]
+        ],
+    )
+
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("product.xlsx", workbook_content)
+        zip_file.writestr("示例好物A/示例好物A_cover.png", SAMPLE_PNG_BYTES)
+        zip_file.writestr("示例好物A/示例好物A_1.png", SAMPLE_PNG_BYTES)
+    return buffer.getvalue()
+
+
+@router.post("/upload-init", summary="初始化好物导入上传")
+async def init_product_import_upload(payload: ProductImportUploadInitIn, current_user: User = DependAuth):
+    if not payload.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="only zip file is supported")
+    if payload.file_size > settings.PRODUCT_IMPORT_MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="file size exceeds configured limit")
+    if payload.chunk_size > settings.PRODUCT_IMPORT_CHUNK_SIZE:
+        raise HTTPException(status_code=400, detail="chunk size exceeds configured limit")
+
+    try:
+        import_strategy = ProductImportStrategy(payload.import_strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid import strategy") from exc
+
+    task = await product_import_task_controller.create_task(
+        filename=payload.filename,
+        storage_key=f"product-import/raw/pending/{payload.filename}",
+        created_by=current_user.id,
+        import_strategy=import_strategy,
+        status=ProductImportTaskStatus.UPLOADING,
+    )
+    upload_meta = await product_import_upload_service.init_upload(
+        filename=payload.filename,
+        file_size=payload.file_size,
+        total_chunks=payload.total_chunks,
+        chunk_size=payload.chunk_size,
+        task_id=task.id,
+        created_by=current_user.id,
+        import_strategy=import_strategy.value,
+    )
+    return Success(
+        data={
+            "upload_id": upload_meta["upload_id"],
+            "task_id": task.id,
+            "uploaded_chunks": [],
+        }
+    )
+
+
+@router.post("/upload-chunk", summary="上传好物导入分片")
+async def upload_product_import_chunk(
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = DependAuth,
+):
+    upload_meta = await product_import_upload_service.get_upload_meta(upload_id)
+    if upload_meta["created_by"] != current_user.id:
+        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+    result = await product_import_upload_service.save_chunk(upload_id=upload_id, chunk_index=chunk_index, chunk_file=file)
+    return Success(data=result)
+
+
+@router.get("/upload-status", summary="查询好物导入上传状态")
+async def get_product_import_upload_status(
+    upload_id: str = Query(..., description="上传ID"),
+    current_user: User = DependAuth,
+):
+    upload_meta = await product_import_upload_service.get_upload_meta(upload_id)
+    if upload_meta["created_by"] != current_user.id:
+        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+
+    uploaded_chunks = await product_import_upload_service.list_uploaded_chunks(upload_id)
+    return Success(
+        data={
+            "upload_id": upload_id,
+            "task_id": int(upload_meta["task_id"]),
+            "filename": upload_meta["filename"],
+            "file_size": int(upload_meta["file_size"]),
+            "total_chunks": int(upload_meta["total_chunks"]),
+            "chunk_size": int(upload_meta["chunk_size"]),
+            "uploaded_chunks": uploaded_chunks,
+            "is_complete": len(uploaded_chunks) == int(upload_meta["total_chunks"]),
+        }
+    )
+
+
+@router.post("/upload-complete", summary="完成好物导入上传")
+async def complete_product_import_upload(payload: ProductImportUploadCompleteIn, current_user: User = DependAuth):
+    upload_meta = await product_import_upload_service.get_upload_meta(payload.upload_id)
+    if upload_meta["created_by"] != current_user.id:
+        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+
+    merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
+    task_id = int(merged_meta["task_id"])
+    merged_file_path = merged_meta["merged_file_path"]
+    storage_key = os.path.relpath(merged_file_path, settings.BASE_DIR)
+    await product_import_task_controller.update(
+        id=task_id,
+        obj_in={
+            "storage_key": storage_key,
+            "status": ProductImportTaskStatus.QUEUED,
+        },
+    )
+    dispatch_product_import_task(task_id)
+    return Success(
+        data={
+            "task_id": task_id,
+            "storage_key": storage_key,
+            "status": ProductImportTaskStatus.QUEUED,
+        }
+    )
+
+
+def build_task_search(status: str | None, current_user: User) -> Q:
+    query = Q()
+    if status:
+        query &= Q(status=status)
+    if not current_user.is_superuser:
+        query &= Q(created_by=current_user.id)
+    return query
+
+
+async def build_task_detail_summary(task_id: int) -> dict:
+    items = await product_import_task_item_controller.model.filter(task_id=task_id).all()
+    status_counter: Counter[str] = Counter()
+    error_counter: Counter[str] = Counter()
+    status_order = {
+        ProductImportTaskItemStatus.PENDING.value: 0,
+        ProductImportTaskItemStatus.SUCCESS.value: 1,
+        ProductImportTaskItemStatus.FAILED.value: 2,
+        ProductImportTaskItemStatus.SKIPPED.value: 3,
+    }
+
+    for item in items:
+        status = item.status.value if hasattr(item.status, "value") else str(item.status)
+        status_counter[status] += 1
+        if status == ProductImportTaskItemStatus.SUCCESS.value or not item.message:
+            continue
+        for message_part in [part.strip() for part in str(item.message).split(";") if part.strip()]:
+            error_counter[message_part] += 1
+
+    status_breakdown = [
+        {"status": status, "count": count}
+        for status, count in sorted(status_counter.items(), key=lambda item: (status_order.get(item[0], 99), item[0]))
+    ]
+    error_categories = [
+        {"message": message, "count": count}
+        for message, count in error_counter.most_common()
+    ]
+    return {
+        "status_breakdown": status_breakdown,
+        "error_categories": error_categories,
+    }
+
+
+@router.get("/tasks", summary="查看好物导入任务列表")
+async def list_product_import_tasks(
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量"),
+    status: str | None = Query(None, description="任务状态"),
+    current_user: User = DependAuth,
+):
+    total, tasks = await product_import_task_controller.list(
+        page=page,
+        page_size=page_size,
+        search=build_task_search(status, current_user),
+        order=["-created_at", "-id"],
+    )
+    data = [await task.to_dict() for task in tasks]
+    return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
+
+
+@router.get("/task", summary="查看好物导入任务详情")
+async def get_product_import_task(task_id: int = Query(..., description="任务ID"), current_user: User = DependAuth):
+    task = await product_import_task_controller.get(id=task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="task does not belong to current user")
+    data = await task.to_dict()
+    data["detail_summary"] = await build_task_detail_summary(task_id)
+    return Success(data=data)
+
+
+@router.get("/task/items", summary="查看好物导入任务行级明细")
+async def list_product_import_task_items(
+    task_id: int = Query(..., description="任务ID"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
+    status: str | None = Query(None, description="行级状态"),
+    current_user: User = DependAuth,
+):
+    task = await product_import_task_controller.get(id=task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="task does not belong to current user")
+
+    search = Q(task_id=task_id)
+    if status:
+        search &= Q(status=status)
+    total, items = await product_import_task_item_controller.list(
+        page=page,
+        page_size=page_size,
+        search=search,
+        order=["row_no", "id"],
+    )
+    data = [await item.to_dict() for item in items]
+    return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
+
+
+@router.post("/task/cancel", summary="取消好物导入任务")
+async def cancel_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
+    task = await product_import_task_controller.get(id=payload.task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="task does not belong to current user")
+    if task.status not in {
+        ProductImportTaskStatus.PENDING,
+        ProductImportTaskStatus.UPLOADING,
+        ProductImportTaskStatus.QUEUED,
+        ProductImportTaskStatus.RUNNING,
+    }:
+        raise HTTPException(status_code=400, detail="task cannot be canceled in current status")
+    await product_import_task_controller.cancel_task(payload.task_id, message="task canceled by user")
+    return Success(msg="Canceled Successfully")
+
+
+@router.post("/task/retry", summary="重试好物导入任务")
+async def retry_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
+    task = await product_import_task_controller.get(id=payload.task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="task does not belong to current user")
+    if task.status not in {
+        ProductImportTaskStatus.FAILED,
+        ProductImportTaskStatus.PARTIAL_FAILED,
+        ProductImportTaskStatus.CANCELED,
+    }:
+        raise HTTPException(status_code=400, detail="task cannot be retried in current status")
+
+    await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
+    await product_import_task_controller.update(
+        id=payload.task_id,
+        obj_in={
+            "status": ProductImportTaskStatus.QUEUED,
+            "processed_count": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "progress": 0,
+            "error_message": None,
+            "result_summary": {},
+            "error_report_path": None,
+            "started_at": None,
+            "finished_at": None,
+        },
+    )
+    dispatch_product_import_task(payload.task_id)
+    return Success(msg="Retry queued successfully")
+
+
+@router.get("/task/errors", summary="下载好物导入错误报告")
+async def download_product_import_task_errors(
+    task_id: int = Query(..., description="任务ID"),
+    current_user: User = DependAuth,
+):
+    task = await product_import_task_controller.get(id=task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="task does not belong to current user")
+    if not task.error_report_path:
+        raise HTTPException(status_code=404, detail="error report not found")
+
+    local_path = storage_service.resolve_stored_path(task.error_report_path)
+    if local_path and os.path.exists(local_path):
+        filename = f"product-import-errors-{task_id}.xlsx"
+        return StreamingResponse(
+            iter([open(local_path, "rb").read()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    if str(task.error_report_path).startswith(("http://", "https://", "/uploads/")):
+        return RedirectResponse(url=str(task.error_report_path))
+    raise HTTPException(status_code=404, detail="error report source is unavailable")
+
+
+@router.get("/template", summary="下载好物导入模板")
+async def download_product_import_template():
+    content = build_product_import_template_content()
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="product-import-template.xlsx"'},
+    )
+
+
+@router.get("/example", summary="下载好物导入示例ZIP")
+async def download_product_import_example():
+    content = build_product_import_example_zip()
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="product-import-example.zip"'},
+    )

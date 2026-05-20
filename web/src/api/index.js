@@ -30,6 +30,34 @@ async function downloadScopedFile(path, data = {}, filename = 'export.xlsx') {
   window.URL.revokeObjectURL(url)
 }
 
+async function downloadScopedGetFile(path, filename = 'download.bin') {
+  const response = await fetch(`${import.meta.env.VITE_BASE_API}${path}`, {
+    method: 'GET',
+    headers: {
+      token: getToken() || '',
+    },
+  })
+
+  if (!response.ok) {
+    let message = '文件下载失败'
+    try {
+      const result = await response.json()
+      message = result?.detail || result?.msg || message
+    } catch {
+      // ignore json parse failure
+    }
+    throw new Error(message)
+  }
+
+  const blob = await response.blob()
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.URL.revokeObjectURL(url)
+}
+
 export default {
   login: (data) => request.post('/base/access_token', data, { noNeedToken: true }),
   getUserInfo: () => request.get('/base/userinfo'),
@@ -74,7 +102,8 @@ export default {
   createCategory: (data = {}) => request.post('/category/create', data),
   updateCategory: (data = {}) => request.post('/category/update', data),
   deleteCategory: (data = {}) => request.delete('/category/delete', { data }),
-  exportCategory: (data = {}) => downloadScopedFile('/category/export', data, 'category-export.xlsx'),
+  exportCategory: (data = {}) =>
+    downloadScopedFile('/category/export', data, 'category-export.xlsx'),
   getCategoryHotConfig: (params = {}) => request.get('/category/hot-config', { params }),
   updateCategoryHotConfig: (data = {}) => request.post('/category/hot-config', data),
   // brands
@@ -115,8 +144,27 @@ export default {
   updateProduct: (data = {}) => request.post('/product/update', data),
   deleteProduct: (data = {}) => request.delete('/product/delete', { data }),
   exportProduct: (data = {}) => downloadScopedFile('/product/export', data, 'product-export.xlsx'),
+  initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
+  uploadProductImportChunk: (data) => request.post('/product/import/upload-chunk', data),
+  getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
+  completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
+  getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
+  getProductImportTask: (params = {}) => request.get('/product/import/task', { params }),
+  getProductImportTaskItems: (params = {}) => request.get('/product/import/task/items', { params }),
+  cancelProductImportTask: (data = {}) => request.post('/product/import/task/cancel', data),
+  retryProductImportTask: (data = {}) => request.post('/product/import/task/retry', data),
+  downloadProductImportTemplate: () =>
+    downloadScopedGetFile('/product/import/template', 'product-import-template.xlsx'),
+  downloadProductImportExample: () =>
+    downloadScopedGetFile('/product/import/example', 'product-import-example.zip'),
+  downloadProductImportErrors: (taskId) =>
+    downloadScopedGetFile(
+      `/product/import/task/errors?task_id=${taskId}`,
+      `product-import-errors-${taskId}.xlsx`
+    ),
   getCatalog: (params = {}) => request.get('/base/catalog', { params, noNeedToken: true }),
-  getCatalogProduct: (productId) => request.get(`/base/catalog/products/${productId}`, { noNeedToken: true }),
+  getCatalogProduct: (productId) =>
+    request.get(`/base/catalog/products/${productId}`, { noNeedToken: true }),
   // auditlog
   getAuditLogList: (params = {}) => request.get('/auditlog/list', { params }),
   // stats

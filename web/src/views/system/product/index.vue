@@ -29,6 +29,8 @@ import { formatDate } from '@/utils'
 
 defineOptions({ name: '好物管理' })
 
+const router = useRouter()
+
 const DEFAULT_DETAIL_DESCRIPTION = JSON.stringify(
   [
     {
@@ -668,11 +670,18 @@ async function toggleStatus(row, nextValue) {
   $message.success(nextValue ? '好物已上架' : '好物已下架')
   $table.value?.handleSearch()
 }
+
+function goToProductImport() {
+  router.push('/batch/product-import')
+}
 </script>
 
 <template>
   <CommonPage show-footer title="好物列表">
     <template #action>
+      <NButton v-permission="'get/api/v1/product/import/tasks'" type="default" @click="goToProductImport">
+        <TheIcon icon="material-symbols:cloud-upload-outline" :size="18" class="mr-5" />去批量导入
+      </NButton>
       <NButton v-permission="'post/api/v1/product/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
       </NButton>

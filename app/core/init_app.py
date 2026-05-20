@@ -247,6 +247,25 @@ async def init_menus():
     else:
         data_menu = await Menu.create(**data_payload)
 
+    batch_menu = await Menu.filter(path="/batch", parent_id=0).first()
+    batch_payload = dict(
+        menu_type=MenuType.CATALOG,
+        name="批量中心",
+        path="/batch",
+        order=4,
+        parent_id=0,
+        icon="material-symbols:cloud-upload-outline",
+        is_hidden=False,
+        component="Layout",
+        keepalive=False,
+        redirect="/batch/product-import",
+    )
+    if batch_menu:
+        batch_menu.update_from_dict(batch_payload)
+        await batch_menu.save()
+    else:
+        batch_menu = await Menu.create(**batch_payload)
+
     business_children = [
         {
             "name": "好物管理",
@@ -352,6 +371,42 @@ async def init_menus():
             path=item["path"],
             order=item["order"],
             parent_id=data_menu.id,
+            icon=item["icon"],
+            is_hidden=False,
+            component=item["component"],
+            keepalive=False,
+        )
+        if menu_obj:
+            menu_obj.update_from_dict(payload)
+            await menu_obj.save()
+        else:
+            await Menu.create(**payload)
+
+    batch_children = [
+        {
+            "name": "好物批量导入",
+            "path": "product-import",
+            "order": 1,
+            "icon": "material-symbols:upload-file-outline",
+            "component": "/system/product-import",
+        },
+        {
+            "name": "导入任务记录",
+            "path": "product-import-task",
+            "order": 2,
+            "icon": "material-symbols:task-outline",
+            "component": "/system/product-import-task",
+        },
+    ]
+
+    for item in batch_children:
+        menu_obj = await Menu.filter(parent_id=batch_menu.id, path=item["path"]).first()
+        payload = dict(
+            menu_type=MenuType.MENU,
+            name=item["name"],
+            path=item["path"],
+            order=item["order"],
+            parent_id=batch_menu.id,
             icon=item["icon"],
             is_hidden=False,
             component=item["component"],
