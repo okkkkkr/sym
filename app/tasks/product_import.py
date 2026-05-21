@@ -122,12 +122,12 @@ async def run_product_import(task_id: int) -> None:
             material_set = material_map.get(row.name)
             row_errors = list(row.errors)
             if material_set is None:
-                row_errors.append("material directory not found")
+                row_errors.append("未找到与名称对应的素材目录")
             else:
                 if not material_set.images:
-                    row_errors.append("material directory must contain at least one image")
+                    row_errors.append("素材目录至少需要一张图片")
                 if not material_set.cover_image:
-                    row_errors.append("cover image could not be resolved")
+                    row_errors.append("未能识别封面图")
 
             if row_errors:
                 failed_count += 1
@@ -166,9 +166,9 @@ async def run_product_import(task_id: int) -> None:
 
                 success_count += 1
                 processed_count += 1
-                success_message = "created successfully"
+                success_message = "创建成功"
                 if row.duplicate_hint:
-                    success_message = f"{success_message}; duplicate product name detected"
+                    success_message = f"{success_message}; 检测到同名好物"
                 await product_import_task_item_controller.mark_success(
                     item.id,
                     message=success_message,

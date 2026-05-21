@@ -680,7 +680,7 @@ function goToProductImport() {
   <CommonPage show-footer title="好物列表">
     <template #action>
       <NButton v-permission="'get/api/v1/product/import/tasks'" type="default" @click="goToProductImport">
-        <TheIcon icon="material-symbols:cloud-upload-outline" :size="18" class="mr-5" />去批量导入
+        <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />去批量导入
       </NButton>
       <NButton v-permission="'post/api/v1/product/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
@@ -817,7 +817,7 @@ function goToProductImport() {
                 multiple
                 @finish="handleImageUploadFinish"
               >
-                <NIcon size="40">·
+                <NIcon size="40">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
                     <path
                       d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"

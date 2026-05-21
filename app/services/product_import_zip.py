@@ -15,11 +15,11 @@ class ProductImportZipService:
 
     def validate_zip(self, zip_path: str) -> dict:
         if not os.path.exists(zip_path):
-            raise HTTPException(status_code=404, detail="zip file not found")
+            raise HTTPException(status_code=404, detail="未找到上传的 ZIP 文件")
         if not zipfile.is_zipfile(zip_path):
-            raise HTTPException(status_code=400, detail="uploaded file is not a valid zip archive")
+            raise HTTPException(status_code=400, detail="上传文件不是合法的 ZIP 压缩包")
         if os.path.getsize(zip_path) > settings.PRODUCT_IMPORT_MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail="zip file exceeds configured size limit")
+            raise HTTPException(status_code=400, detail="ZIP 文件大小超出系统限制")
 
         root_excel_found = False
         file_count = 0
@@ -34,14 +34,14 @@ class ProductImportZipService:
                     continue
                 parts = [part for part in normalized.split("/") if part not in {"", "."}]
                 if any(part == ".." for part in parts):
-                    raise HTTPException(status_code=400, detail="zip contains invalid relative path")
+                    raise HTTPException(status_code=400, detail="ZIP 包内包含非法相对路径")
                 if normalized.startswith("/"):
-                    raise HTTPException(status_code=400, detail="zip contains absolute path")
+                    raise HTTPException(status_code=400, detail="ZIP 包内不允许绝对路径")
 
                 is_directory = info.is_dir() or normalized.endswith("/")
                 if is_directory:
                     if len(parts) > 1:
-                        raise HTTPException(status_code=400, detail="zip contains nested directories")
+                        raise HTTPException(status_code=400, detail="ZIP 包内不允许多级目录")
                     if parts:
                         directories.add(parts[0])
                     continue
@@ -49,21 +49,21 @@ class ProductImportZipService:
                 file_count += 1
                 total_uncompressed_size += info.file_size
                 if info.file_size <= 0:
-                    raise HTTPException(status_code=400, detail="zip contains empty file")
+                    raise HTTPException(status_code=400, detail="ZIP 包内存在空文件")
 
                 if len(parts) == 1:
                     if parts[0] == "product.xlsx":
                         root_excel_found = True
                     else:
-                        raise HTTPException(status_code=400, detail="zip root only allows product.xlsx")
+                        raise HTTPException(status_code=400, detail="ZIP 根目录仅允许存在 product.xlsx")
                     continue
 
                 if len(parts) != 2:
-                    raise HTTPException(status_code=400, detail="zip only supports one-level material directories")
+                    raise HTTPException(status_code=400, detail="ZIP 仅支持一级素材目录")
                 directories.add(parts[0])
 
         if not root_excel_found:
-            raise HTTPException(status_code=400, detail="zip must contain product.xlsx in root directory")
+            raise HTTPException(status_code=400, detail="ZIP 根目录必须包含 product.xlsx")
 
         return {
             "file_count": file_count,
@@ -82,7 +82,7 @@ class ProductImportZipService:
                 target_path = Path(extract_dir) / info.filename
                 resolved_target = target_path.resolve()
                 if not str(resolved_target).startswith(str(Path(extract_dir).resolve())):
-                    raise HTTPException(status_code=400, detail="zip extraction path is unsafe")
+                    raise HTTPException(status_code=400, detail="ZIP 解压路径不安全")
             zip_file.extractall(extract_dir)
 
         return extract_dir
@@ -99,7 +99,7 @@ class ProductImportZipService:
             for child in sorted(os.listdir(absolute_path)):
                 child_path = os.path.join(absolute_path, child)
                 if os.path.isdir(child_path):
-                    raise HTTPException(status_code=400, detail="nested material directories are not allowed")
+                    raise HTTPException(status_code=400, detail="素材目录下不允许再嵌套子目录")
                 suffix = Path(child).suffix.lower()
                 if suffix in self.IMAGE_EXTENSIONS:
                     images.append(child_path)

@@ -24,7 +24,7 @@ from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter(prefix="/import")
 
-PRODUCT_IMPORT_TEMPLATE_HEADERS = [
+PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "name",
     "category_name",
     "brand_name",
@@ -33,8 +33,35 @@ PRODUCT_IMPORT_TEMPLATE_HEADERS = [
     "product_code_custom",
     "status",
     "order",
-    "detail_text",
-    "detail_description_json",
+]
+
+PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
+    "name": "名称",
+    "category_name": "所属分类",
+    "brand_name": "所属品牌",
+    "desc": "简介",
+    "tag_names": "标签",
+    "product_code_custom": "自定义识别码",
+    "status": "上架状态",
+    "order": "排序",
+    "detail_text": "详情文本",
+    "detail_description_json": "结构化详情JSON",
+}
+
+PRODUCT_IMPORT_TEMPLATE_HEADERS = [
+    PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS[field]
+    for field in PRODUCT_IMPORT_TEMPLATE_FIELDS
+]
+
+PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
+    "示例好物A",
+    "示例分类",
+    "示例品牌",
+    "这是一条示例简介",
+    "标签A,标签B",
+    "1001",
+    "1",
+    0,
 ]
 
 SAMPLE_PNG_BYTES = b64decode(
@@ -54,7 +81,7 @@ def build_product_import_template_content() -> bytes:
     return build_xlsx_content(
         sheet_title="好物导入模板",
         headers=PRODUCT_IMPORT_TEMPLATE_HEADERS,
-        rows=[],
+        rows=[PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW],
     )
 
 
@@ -62,20 +89,7 @@ def build_product_import_example_zip() -> bytes:
     workbook_content = build_xlsx_content(
         sheet_title="好物导入示例",
         headers=PRODUCT_IMPORT_TEMPLATE_HEADERS,
-        rows=[
-            [
-                "示例好物A",
-                "示例分类",
-                "示例品牌",
-                "示例简介",
-                "标签A,标签B",
-                "1001",
-                "true",
-                0,
-                "这是一段示例详情",
-                "",
-            ]
-        ],
+        rows=[PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW],
     )
 
     buffer = BytesIO()
@@ -89,16 +103,16 @@ def build_product_import_example_zip() -> bytes:
 @router.post("/upload-init", summary="初始化好物导入上传")
 async def init_product_import_upload(payload: ProductImportUploadInitIn, current_user: User = DependAuth):
     if not payload.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="only zip file is supported")
+        raise HTTPException(status_code=400, detail="仅支持上传 ZIP 文件")
     if payload.file_size > settings.PRODUCT_IMPORT_MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="file size exceeds configured limit")
+        raise HTTPException(status_code=400, detail="文件大小超出系统限制")
     if payload.chunk_size > settings.PRODUCT_IMPORT_CHUNK_SIZE:
-        raise HTTPException(status_code=400, detail="chunk size exceeds configured limit")
+        raise HTTPException(status_code=400, detail="分片大小超出系统限制")
 
     try:
         import_strategy = ProductImportStrategy(payload.import_strategy)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="invalid import strategy") from exc
+        raise HTTPException(status_code=400, detail="导入策略不合法") from exc
 
     task = await product_import_task_controller.create_task(
         filename=payload.filename,
@@ -134,7 +148,7 @@ async def upload_product_import_chunk(
 ):
     upload_meta = await product_import_upload_service.get_upload_meta(upload_id)
     if upload_meta["created_by"] != current_user.id:
-        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权操作该上传任务")
     result = await product_import_upload_service.save_chunk(upload_id=upload_id, chunk_index=chunk_index, chunk_file=file)
     return Success(data=result)
 
@@ -146,7 +160,7 @@ async def get_product_import_upload_status(
 ):
     upload_meta = await product_import_upload_service.get_upload_meta(upload_id)
     if upload_meta["created_by"] != current_user.id:
-        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权查看该上传任务")
 
     uploaded_chunks = await product_import_upload_service.list_uploaded_chunks(upload_id)
     return Success(
@@ -167,7 +181,7 @@ async def get_product_import_upload_status(
 async def complete_product_import_upload(payload: ProductImportUploadCompleteIn, current_user: User = DependAuth):
     upload_meta = await product_import_upload_service.get_upload_meta(payload.upload_id)
     if upload_meta["created_by"] != current_user.id:
-        raise HTTPException(status_code=403, detail="upload task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权完成该上传任务")
 
     merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
     task_id = int(merged_meta["task_id"])
@@ -253,7 +267,7 @@ async def list_product_import_tasks(
 async def get_product_import_task(task_id: int = Query(..., description="任务ID"), current_user: User = DependAuth):
     task = await product_import_task_controller.get(id=task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权查看该任务")
     data = await task.to_dict()
     data["detail_summary"] = await build_task_detail_summary(task_id)
     return Success(data=data)
@@ -269,7 +283,7 @@ async def list_product_import_task_items(
 ):
     task = await product_import_task_controller.get(id=task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权查看该任务")
 
     search = Q(task_id=task_id)
     if status:
@@ -288,29 +302,29 @@ async def list_product_import_task_items(
 async def cancel_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
     task = await product_import_task_controller.get(id=payload.task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
     if task.status not in {
         ProductImportTaskStatus.PENDING,
         ProductImportTaskStatus.UPLOADING,
         ProductImportTaskStatus.QUEUED,
         ProductImportTaskStatus.RUNNING,
     }:
-        raise HTTPException(status_code=400, detail="task cannot be canceled in current status")
-    await product_import_task_controller.cancel_task(payload.task_id, message="task canceled by user")
-    return Success(msg="Canceled Successfully")
+        raise HTTPException(status_code=400, detail="当前状态下不可取消任务")
+    await product_import_task_controller.cancel_task(payload.task_id, message="任务已由用户取消")
+    return Success(msg="任务取消成功")
 
 
 @router.post("/task/retry", summary="重试好物导入任务")
 async def retry_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
     task = await product_import_task_controller.get(id=payload.task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
     if task.status not in {
         ProductImportTaskStatus.FAILED,
         ProductImportTaskStatus.PARTIAL_FAILED,
         ProductImportTaskStatus.CANCELED,
     }:
-        raise HTTPException(status_code=400, detail="task cannot be retried in current status")
+        raise HTTPException(status_code=400, detail="当前状态下不可重试任务")
 
     await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
     await product_import_task_controller.update(
@@ -329,7 +343,7 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
         },
     )
     dispatch_product_import_task(payload.task_id)
-    return Success(msg="Retry queued successfully")
+    return Success(msg="任务已重新加入队列")
 
 
 @router.get("/task/errors", summary="下载好物导入错误报告")
@@ -339,9 +353,9 @@ async def download_product_import_task_errors(
 ):
     task = await product_import_task_controller.get(id=task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="task does not belong to current user")
+        raise HTTPException(status_code=403, detail="当前用户无权查看该任务")
     if not task.error_report_path:
-        raise HTTPException(status_code=404, detail="error report not found")
+        raise HTTPException(status_code=404, detail="未找到错误报告")
 
     local_path = storage_service.resolve_stored_path(task.error_report_path)
     if local_path and os.path.exists(local_path):
@@ -354,7 +368,7 @@ async def download_product_import_task_errors(
 
     if str(task.error_report_path).startswith(("http://", "https://", "/uploads/")):
         return RedirectResponse(url=str(task.error_report_path))
-    raise HTTPException(status_code=404, detail="error report source is unavailable")
+    raise HTTPException(status_code=404, detail="错误报告文件不可用")
 
 
 @router.get("/template", summary="下载好物导入模板")

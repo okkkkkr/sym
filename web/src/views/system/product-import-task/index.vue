@@ -400,7 +400,7 @@ onBeforeUnmount(() => {
   <CommonPage title="导入任务记录">
     <template #action>
       <NButton type="default" @click="router.push('/batch/product-import')">
-        <TheIcon icon="material-symbols:cloud-upload-outline" :size="18" class="mr-5" />去上传
+        <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />去上传
       </NButton>
     </template>
 

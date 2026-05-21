@@ -22,6 +22,27 @@ class ProductImportParserService:
         "detail_text",
         "detail_description_json",
     ]
+    DISPLAY_HEADERS = {
+        "name": "名称",
+        "category_name": "所属分类",
+        "brand_name": "所属品牌",
+        "desc": "简介",
+        "tag_names": "标签",
+        "product_code_custom": "自定义识别码",
+        "status": "上架状态",
+        "order": "排序",
+        "detail_text": "详情文本",
+        "detail_description_json": "结构化详情JSON",
+    }
+    HEADER_ALIASES = {
+        key: [key, label]
+        for key, label in DISPLAY_HEADERS.items()
+    }
+    HEADER_LOOKUP = {
+        alias: key
+        for key, aliases in HEADER_ALIASES.items()
+        for alias in aliases
+    }
     REQUIRED_HEADERS = ["name", "category_name", "brand_name"]
     STATUS_TRUE_VALUES = {"true", "1", "是", "yes"}
     STATUS_FALSE_VALUES = {"false", "0", "否", "no"}
@@ -35,10 +56,15 @@ class ProductImportParserService:
                 return ProductImportParseResult(headers=[], rows=[], total_rows=0, valid_rows=0, invalid_rows=0)
 
             headers = [self._normalize_cell_value(value) for value in rows[0]]
-            header_index = {header: index for index, header in enumerate(headers) if header}
+            header_index = {}
+            for index, header in enumerate(headers):
+                if not header:
+                    continue
+                header_index[self.HEADER_LOOKUP.get(header, header)] = index
             missing_headers = [header for header in self.REQUIRED_HEADERS if header not in header_index]
             if missing_headers:
-                raise HTTPException(status_code=400, detail=f"missing required headers: {', '.join(missing_headers)}")
+                missing_labels = [self.DISPLAY_HEADERS.get(header, header) for header in missing_headers]
+                raise HTTPException(status_code=400, detail=f"缺少必填表头: {', '.join(missing_labels)}")
 
             categories = {item.name: item.id for item in await Category.all()}
             tags = {item.name: item.id for item in await Tag.all()}
@@ -123,25 +149,25 @@ class ProductImportParserService:
         existing_products: set[str],
     ) -> None:
         if not row.name:
-            row.errors.append("name is required")
+            row.errors.append("名称不能为空")
         if not row.category_name:
-            row.errors.append("category_name is required")
+            row.errors.append("所属分类不能为空")
         if not row.brand_name:
-            row.errors.append("brand_name is required")
+            row.errors.append("所属品牌不能为空")
 
         category_id = categories.get(row.category_name)
         if row.category_name and category_id is None:
-            row.errors.append("category_name not found")
+            row.errors.append("所属分类不存在")
         row.category_id = category_id
 
         brand = brand_map.get(row.brand_name)
         if row.brand_name and brand is None:
-            row.errors.append("brand_name not found")
+            row.errors.append("所属品牌不存在")
         if brand is not None:
             row.brand_id = brand.id
             category_ids = {category.id for category in brand.categories}
             if category_id is not None and category_id not in category_ids:
-                row.errors.append("brand_name does not belong to category_name")
+                row.errors.append("所属品牌不属于所选分类")
 
         resolved_tag_ids: list[int] = []
         missing_tags: list[str] = []
@@ -152,13 +178,13 @@ class ProductImportParserService:
                 continue
             resolved_tag_ids.append(tag_id)
         if missing_tags:
-            row.errors.append(f"tag_names not found: {', '.join(missing_tags)}")
+            row.errors.append(f"以下标签不存在: {', '.join(missing_tags)}")
         row.tag_ids = list(dict.fromkeys(resolved_tag_ids))
 
         normalized_name = self._normalize_name(row.name)
         if normalized_name and normalized_name in existing_products:
             row.duplicate_hint = True
-            row.warnings.append("duplicate product name detected")
+            row.warnings.append("检测到同名好物")
 
     @staticmethod
     def _normalize_cell_value(value) -> str:
@@ -188,7 +214,7 @@ class ProductImportParserService:
             return True, None
         if normalized in self.STATUS_FALSE_VALUES:
             return False, None
-        return True, "status must be one of true/false/1/0/是/否"
+        return True, "上架状态仅支持 true/false/1/0/是/否"
 
     @staticmethod
     def _parse_order(value: str) -> tuple[int, str | None]:
@@ -197,7 +223,7 @@ class ProductImportParserService:
         try:
             return int(str(value).strip()), None
         except (TypeError, ValueError):
-            return 0, "order must be an integer"
+            return 0, "排序必须是整数"
 
     def _parse_detail_description(self, detail_text: str, detail_description_json: str):
         if detail_description_json:
@@ -205,9 +231,9 @@ class ProductImportParserService:
                 parsed = json.loads(detail_description_json)
                 if isinstance(parsed, list):
                     return parsed, None
-                return [], "detail_description_json must be a JSON array"
+                return [], "结构化详情JSON必须是数组"
             except json.JSONDecodeError:
-                return [], "detail_description_json is invalid JSON"
+                return [], "结构化详情JSON不是合法的 JSON"
         if detail_text:
             return [
                 {

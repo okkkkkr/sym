@@ -55,7 +55,7 @@ class ProductImportUploadService:
     async def get_upload_meta(self, upload_id: str) -> dict:
         meta_path = self.get_meta_path(upload_id)
         if not os.path.exists(meta_path):
-            raise HTTPException(status_code=404, detail="upload task not found")
+            raise HTTPException(status_code=404, detail="未找到上传任务")
         with open(meta_path, "r", encoding="utf-8") as file_obj:
             return json.load(file_obj)
 
@@ -76,14 +76,14 @@ class ProductImportUploadService:
     async def save_chunk(self, upload_id: str, chunk_index: int, chunk_file: UploadFile) -> dict:
         meta = await self.get_upload_meta(upload_id)
         if chunk_index < 0 or chunk_index >= meta["total_chunks"]:
-            raise HTTPException(status_code=400, detail="invalid chunk index")
+            raise HTTPException(status_code=400, detail="分片序号不合法")
 
         chunk_path = os.path.join(self.get_chunks_dir(upload_id), f"{chunk_index}.part")
         chunk_content = await chunk_file.read()
         if not chunk_content:
-            raise HTTPException(status_code=400, detail="empty chunk is not allowed")
+            raise HTTPException(status_code=400, detail="分片内容不能为空")
         if len(chunk_content) > meta["chunk_size"] and chunk_index != meta["total_chunks"] - 1:
-            raise HTTPException(status_code=400, detail="chunk size exceeds configured limit")
+            raise HTTPException(status_code=400, detail="分片大小超出系统限制")
 
         with open(chunk_path, "wb") as file_obj:
             file_obj.write(chunk_content)
@@ -101,7 +101,7 @@ class ProductImportUploadService:
         uploaded_chunks = await self.list_uploaded_chunks(upload_id)
         expected_chunks = list(range(meta["total_chunks"]))
         if uploaded_chunks != expected_chunks:
-            raise HTTPException(status_code=400, detail="chunks are incomplete")
+            raise HTTPException(status_code=400, detail="分片上传不完整")
 
         merged_file_path = self.get_merged_file_path(upload_id, meta["filename"])
         with open(merged_file_path, "wb") as merged_file:
@@ -112,7 +112,7 @@ class ProductImportUploadService:
 
         merged_file_size = os.path.getsize(merged_file_path)
         if merged_file_size != meta["file_size"]:
-            raise HTTPException(status_code=400, detail="merged file size mismatch")
+            raise HTTPException(status_code=400, detail="合并后的文件大小与原始声明不一致")
 
         meta["merged_file_path"] = merged_file_path
         self._write_meta(upload_id, meta)

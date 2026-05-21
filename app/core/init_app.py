@@ -254,7 +254,7 @@ async def init_menus():
         path="/batch",
         order=4,
         parent_id=0,
-        icon="material-symbols:cloud-upload-outline",
+        icon="material-symbols:upload-file-outline",
         is_hidden=False,
         component="Layout",
         keepalive=False,
