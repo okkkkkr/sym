@@ -248,7 +248,7 @@ class ProductImportParserService:
     def _parse_tag_names(value: str) -> list[str]:
         if not value:
             return []
-        parts = re.split(r"[,，、\n]+", value)
+        parts = re.split(r"[;；\n]+", value)
         return list(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
 
     @staticmethod

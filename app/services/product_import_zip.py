@@ -12,6 +12,8 @@ from app.settings import settings
 class ProductImportZipService:
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
+    IGNORED_ROOT_DIRECTORIES = {"__MACOSX"}
+    IGNORED_FILENAMES = {".DS_Store"}
 
     def validate_zip(self, zip_path: str) -> dict:
         if not os.path.exists(zip_path):
@@ -27,23 +29,17 @@ class ProductImportZipService:
         directories = set()
 
         with zipfile.ZipFile(zip_path, "r") as zip_file:
-            for info in zip_file.infolist():
-                filename = info.filename
-                normalized = filename.replace("\\", "/").strip()
-                if not normalized:
+            entries = self._build_zip_entries(zip_file)
+            wrapper_dir = self._detect_wrapper_dir(entries)
+            for info, parts, is_directory in entries:
+                normalized_parts = self._strip_wrapper(parts, wrapper_dir)
+                if not normalized_parts:
                     continue
-                parts = [part for part in normalized.split("/") if part not in {"", "."}]
-                if any(part == ".." for part in parts):
-                    raise HTTPException(status_code=400, detail="ZIP 包内包含非法相对路径")
-                if normalized.startswith("/"):
-                    raise HTTPException(status_code=400, detail="ZIP 包内不允许绝对路径")
 
-                is_directory = info.is_dir() or normalized.endswith("/")
                 if is_directory:
-                    if len(parts) > 1:
+                    if len(normalized_parts) > 1:
                         raise HTTPException(status_code=400, detail="ZIP 包内不允许多级目录")
-                    if parts:
-                        directories.add(parts[0])
+                    directories.add(normalized_parts[0])
                     continue
 
                 file_count += 1
@@ -51,19 +47,19 @@ class ProductImportZipService:
                 if info.file_size <= 0:
                     raise HTTPException(status_code=400, detail="ZIP 包内存在空文件")
 
-                if len(parts) == 1:
-                    if parts[0] == "product.xlsx":
+                if len(normalized_parts) == 1:
+                    if normalized_parts[0] == "product.xlsx":
                         root_excel_found = True
                     else:
-                        raise HTTPException(status_code=400, detail="ZIP 根目录仅允许存在 product.xlsx")
+                        raise HTTPException(status_code=400, detail="ZIP 导入根目录仅允许存在 product.xlsx")
                     continue
 
-                if len(parts) != 2:
+                if len(normalized_parts) != 2:
                     raise HTTPException(status_code=400, detail="ZIP 仅支持一级素材目录")
-                directories.add(parts[0])
+                directories.add(normalized_parts[0])
 
         if not root_excel_found:
-            raise HTTPException(status_code=400, detail="ZIP 根目录必须包含 product.xlsx")
+            raise HTTPException(status_code=400, detail="ZIP 导入根目录必须包含 product.xlsx")
 
         return {
             "file_count": file_count,
@@ -78,12 +74,27 @@ class ProductImportZipService:
         os.makedirs(extract_dir, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, "r") as zip_file:
-            for info in zip_file.infolist():
-                target_path = Path(extract_dir) / info.filename
+            entries = self._build_zip_entries(zip_file)
+            wrapper_dir = self._detect_wrapper_dir(entries)
+            base_path = Path(extract_dir).resolve()
+
+            for info, parts, is_directory in entries:
+                normalized_parts = self._strip_wrapper(parts, wrapper_dir)
+                if not normalized_parts:
+                    continue
+
+                target_path = Path(extract_dir).joinpath(*normalized_parts)
                 resolved_target = target_path.resolve()
-                if not str(resolved_target).startswith(str(Path(extract_dir).resolve())):
+                if not str(resolved_target).startswith(str(base_path)):
                     raise HTTPException(status_code=400, detail="ZIP 解压路径不安全")
-            zip_file.extractall(extract_dir)
+
+                if is_directory:
+                    resolved_target.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                resolved_target.parent.mkdir(parents=True, exist_ok=True)
+                with zip_file.open(info, "r") as source, open(resolved_target, "wb") as target:
+                    shutil.copyfileobj(source, target)
 
         return extract_dir
 
@@ -123,6 +134,50 @@ class ProductImportZipService:
         if cover_candidates:
             return sorted(cover_candidates)[0]
         return sorted(images)[0]
+
+    def _build_zip_entries(self, zip_file: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, list[str], bool]]:
+        entries: list[tuple[zipfile.ZipInfo, list[str], bool]] = []
+        for info in zip_file.infolist():
+            filename = info.filename
+            normalized = filename.replace("\\", "/").strip()
+            if not normalized:
+                continue
+            parts = [part for part in normalized.split("/") if part not in {"", "."}]
+            if any(part == ".." for part in parts):
+                raise HTTPException(status_code=400, detail="ZIP 包内包含非法相对路径")
+            if normalized.startswith("/"):
+                raise HTTPException(status_code=400, detail="ZIP 包内不允许绝对路径")
+            if self._should_ignore(parts):
+                continue
+
+            is_directory = info.is_dir() or normalized.endswith("/")
+            entries.append((info, parts, is_directory))
+        return entries
+
+    def _detect_wrapper_dir(self, entries: list[tuple[zipfile.ZipInfo, list[str], bool]]) -> str | None:
+        file_entries = [parts for _, parts, is_directory in entries if not is_directory]
+        if not file_entries:
+            return None
+
+        first_root = file_entries[0][0]
+        if all(len(parts) >= 2 and parts[0] == first_root for parts in file_entries):
+            return first_root
+        return None
+
+    @staticmethod
+    def _strip_wrapper(parts: list[str], wrapper_dir: str | None) -> list[str]:
+        if wrapper_dir and parts and parts[0] == wrapper_dir:
+            return parts[1:]
+        return parts
+
+    def _should_ignore(self, parts: list[str]) -> bool:
+        if not parts:
+            return True
+        if parts[0] in self.IGNORED_ROOT_DIRECTORIES:
+            return True
+        if parts[-1] in self.IGNORED_FILENAMES:
+            return True
+        return any(part.startswith("._") for part in parts)
 
 
 product_import_zip_service = ProductImportZipService()

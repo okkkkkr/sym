@@ -151,7 +151,7 @@ ZIP 根目录固定包含一个 Excel 文件和多个以好物名称命名的素
 | `category_name` | 是 | 分类名称，精确匹配 |
 | `brand_name` | 是 | 品牌名称，精确匹配，且必须属于分类 |
 | `desc` | 否 | 好物简介 |
-| `tag_names` | 否 | 标签名称，多值支持逗号、顿号、换行分隔 |
+| `tag_names` | 否 | 标签名称，多值支持分号分隔 |
 | `product_code_custom` | 否 | 识别码自定义数字部分 |
 | `status` | 否 | 支持 `true/false`、`1/0`、`是/否` |
 | `order` | 否 | 排序值，默认 0 |

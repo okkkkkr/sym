@@ -516,9 +516,12 @@ onBeforeUnmount(() => {
             加载中...
           </div>
           <div v-else-if="detailItems.length" class="detail-items">
-            <div v-for="item in detailItems" :key="item.id" class="detail-item-row">
+            <div v-for="(item, index) in detailItems" :key="item.id" class="detail-item-row">
               <div class="detail-item-head">
-                <div class="detail-item-title">#{{ item.row_no }} {{ item.product_name || '-' }}</div>
+                <div class="detail-item-title">
+                  #{{ (detailPagination.page - 1) * detailPagination.page_size + index + 1 }}
+                  {{ item.product_name || '-' }}
+                </div>
                 <NTag :type="itemStatusTagType(item.status)">{{ statusLabel(item.status) }}</NTag>
               </div>
               <div class="detail-item-grid">

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from io import BytesIO
 from typing import Any
 
@@ -18,6 +19,13 @@ from app.utils.excel_export import build_xlsx_content
 router = APIRouter()
 
 TEMPLATE_HEADERS = ["品牌名称", "所属分类", "品牌描述", "检索次数", "排序", "是否启用"]
+
+
+def parse_semicolon_values(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    parts = re.split(r"[;；\n]+", str(value))
+    return list(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
 
 
 async def ensure_category_ids_exist(category_ids: list[int]) -> list[int]:
@@ -168,7 +176,7 @@ async def export_brand(payload: DeleteIdsIn = Body(...)):
         rows.append(
             [
                 item.get("name") or "",
-                "\n".join(category.get("name") or "" for category in item.get("categories") or []),
+                ";".join(category.get("name") or "" for category in item.get("categories") or []),
                 item.get("desc") or "",
                 item.get("product_count") or 0,
                 item.get("search_count") or 0,
@@ -237,11 +245,15 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
         if not name:
             raise HTTPException(status_code=400, detail=f"第 {index} 行品牌名称不能为空")
 
-        category_name = str(row_map.get("所属分类") or "").strip()
-        if not category_name:
+        category_names = parse_semicolon_values(row_map.get("所属分类"))
+        if not category_names:
             raise HTTPException(status_code=400, detail=f"第 {index} 行所属分类不能为空")
-        if category_name not in category_name_to_id:
-            raise HTTPException(status_code=400, detail=f"第 {index} 行所属分类不存在: {category_name}")
+        invalid_category_names = [category_name for category_name in category_names if category_name not in category_name_to_id]
+        if invalid_category_names:
+            raise HTTPException(
+                status_code=400,
+                detail=f"第 {index} 行所属分类不存在: {';'.join(invalid_category_names)}",
+            )
 
         is_active_value = str(row_map.get("是否启用") or "true").strip().lower()
         if is_active_value not in {"true", "false", "1", "0", "是", "否"}:
@@ -265,7 +277,7 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
         if existing_item is None:
             grouped_items[name] = {
                 **normalized_item,
-                "category_ids": [category_name_to_id[category_name]],
+                "category_ids": [category_name_to_id[category_name] for category_name in category_names],
             }
             continue
 
@@ -280,9 +292,10 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
         if comparable_existing != comparable_current:
             raise HTTPException(status_code=400, detail=f"第 {index} 行与品牌 {name} 的其他字段不一致")
 
-        category_id = category_name_to_id[category_name]
-        if category_id not in existing_item["category_ids"]:
-            existing_item["category_ids"].append(category_id)
+        for category_name in category_names:
+            category_id = category_name_to_id[category_name]
+            if category_id not in existing_item["category_ids"]:
+                existing_item["category_ids"].append(category_id)
 
     items = [BrandImportItem(**item) for item in grouped_items.values()]
 

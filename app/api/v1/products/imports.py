@@ -1,8 +1,10 @@
 import asyncio
 import os
+import socket
 from collections import Counter
 from base64 import b64decode
 from io import BytesIO
+from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
@@ -58,7 +60,7 @@ PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
     "示例分类",
     "示例品牌",
     "这是一条示例简介",
-    "标签A,标签B",
+    "标签A;标签B",
     "1001",
     "1",
     0,
@@ -69,9 +71,34 @@ SAMPLE_PNG_BYTES = b64decode(
 )
 
 
+def is_celery_broker_reachable(timeout: float = 0.3) -> bool:
+    broker_url = settings.CELERY_BROKER_URL
+    parsed = urlparse(broker_url)
+    if not parsed.hostname:
+        return True
+
+    default_ports = {
+        "redis": 6379,
+        "rediss": 6379,
+        "amqp": 5672,
+        "amqps": 5671,
+    }
+    port = parsed.port or default_ports.get(parsed.scheme)
+    if port is None:
+        return True
+
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def dispatch_product_import_task(task_id: int) -> None:
     try:
-        run_product_import_task.delay(task_id)
+        if not is_celery_broker_reachable():
+            raise ConnectionError(f"celery broker unreachable: {settings.CELERY_BROKER_URL}")
+        run_product_import_task.apply_async(args=[task_id], retry=False)
     except Exception as exc:
         logger.warning("dispatch product import task via celery failed, fallback to local async run: {}", exc)
         asyncio.create_task(run_product_import(task_id))

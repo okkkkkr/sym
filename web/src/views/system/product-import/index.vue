@@ -21,7 +21,7 @@ const activeUploadSession = ref(null)
 const pauseRequested = ref(false)
 
 const chunkSize = 5 * 1024 * 1024
-const maxFileSize = 200 * 1024 * 1024
+const maxFileSize = 500 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
 
 const selectedFileLabel = computed(() => {
@@ -150,7 +150,7 @@ async function handleFileChange(event) {
     return
   }
   if (file.size > maxFileSize) {
-    $message.error('文件大小不能超过 200MB')
+    $message.error('文件大小不能超过 500MB')
     event.target.value = ''
     return
   }
@@ -298,7 +298,7 @@ function goToTaskCenter() {
 
     <NSpace vertical :size="16">
       <NAlert type="info" :show-icon="false">
-        支持上传不超过 200MB 的 ZIP 包。ZIP 根目录必须包含 product.xlsx，素材目录名需与 Excel 中的
+        支持上传不超过 500MB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含 product.xlsx，素材目录名需与 Excel 中的
         name 精确一致。
       </NAlert>
 
@@ -337,6 +337,7 @@ function goToTaskCenter() {
           </div>
           <NProgress
             v-if="uploadLoading || uploadPercent > 0"
+            class="upload-progress"
             type="line"
             :percentage="uploadPercent"
             :show-indicator="true"
@@ -346,7 +347,7 @@ function goToTaskCenter() {
 
       <NCard title="导入说明" size="small">
         <NSpace vertical :size="10">
-          <div>1. 仅支持 product.xlsx + 一层素材目录结构。</div>
+          <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
           <div>2. 品牌、分类、标签均按名称精确匹配。</div>
           <div>3. 图片目录至少包含一张图片，优先使用文件名含 _cover 的图片作为封面。</div>
           <div>4. 同名好物不会覆盖，只会在结果中提示重复风险。</div>
@@ -409,5 +410,10 @@ function goToTaskCenter() {
 .upload-eta {
   font-size: 13px;
   color: #7c3aed;
+}
+
+.upload-progress :deep(.n-progress-graph-line-indicator) {
+  white-space: nowrap;
+  min-width: 40px;
 }
 </style>
