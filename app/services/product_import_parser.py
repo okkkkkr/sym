@@ -184,6 +184,7 @@ class ProductImportParserService:
         normalized_name = self._normalize_name(row.name)
         if normalized_name and normalized_name in existing_products:
             row.duplicate_hint = True
+            row.errors.append("好物名称已存在")
             row.warnings.append("检测到同名好物")
 
     @staticmethod
