@@ -12,7 +12,7 @@ from app.controllers.product import product_controller
 from app.controllers.product_import import product_import_task_controller, product_import_task_item_controller
 from app.core.celery_app import celery_app
 from app.models.enums import ProductImportTaskItemStatus, ProductImportTaskStatus
-from app.services import product_import_parser_service, product_import_zip_service, storage_service
+from app.services import product_import_parser_service, product_import_upload_service, product_import_zip_service, storage_service
 from app.settings import settings
 from app.utils.excel_export import build_xlsx_content
 
@@ -72,18 +72,46 @@ async def generate_error_report(task_id: int) -> str | None:
             os.remove(temp_path)
 
 
-async def run_product_import(task_id: int) -> None:
+async def cleanup_product_import_upload(zip_path: str) -> None:
+    upload_dir = Path(zip_path).resolve().parent
+    base_dir = Path(settings.PRODUCT_IMPORT_TMP_DIR).resolve()
+
+    try:
+        upload_dir.relative_to(base_dir)
+    except ValueError:
+        return
+
+    meta_path = upload_dir / "meta.json"
+    if not meta_path.exists():
+        return
+
+    await product_import_upload_service.cleanup_upload(upload_dir.name)
+
+
+def resolve_task_zip_path(storage_key: str) -> str:
+    stored_path = storage_service.resolve_stored_path(storage_key)
+    if stored_path:
+        return stored_path
+    if os.path.isabs(storage_key):
+        return storage_key
+    return os.path.join(settings.BASE_DIR, storage_key)
+
+
+async def run_product_import(task_id: int, retry_row_nos: list[int] | None = None) -> None:
     await ensure_tortoise_initialized()
     task = await product_import_task_controller.get(id=task_id)
-    zip_path = task.storage_key
-    if not os.path.isabs(zip_path):
-        zip_path = os.path.join(settings.BASE_DIR, zip_path)
+    zip_path = resolve_task_zip_path(task.storage_key)
 
     extract_dir = ""
     success_count = 0
     failed_count = 0
     processed_count = 0
     canceled = False
+    retry_row_no_set = set(retry_row_nos or [])
+    rows = []
+    total_rows = 0
+    valid_rows = 0
+    invalid_rows = 0
 
     try:
         await product_import_task_controller.mark_running(task_id)
@@ -93,17 +121,26 @@ async def run_product_import(task_id: int) -> None:
         workbook_path = os.path.join(extract_dir, "product.xlsx")
         material_map = product_import_zip_service.scan_materials(extract_dir)
         parse_result = await product_import_parser_service.parse(workbook_path)
+        rows = parse_result.rows
+        if retry_row_no_set:
+            rows = [row for row in rows if row.row_no in retry_row_no_set]
+            if not rows:
+                raise HTTPException(status_code=400, detail="未找到可重试的失败项")
+
+        total_rows = len(rows)
+        valid_rows = sum(1 for row in rows if not row.errors)
+        invalid_rows = total_rows - valid_rows
 
         await product_import_task_controller.update_progress(
             task_id,
-            total_count=parse_result.total_rows,
+            total_count=total_rows,
             processed_count=0,
             success_count=0,
             failed_count=0,
             status=ProductImportTaskStatus.RUNNING,
         )
 
-        for row in parse_result.rows:
+        for row in rows:
             latest_task = await product_import_task_controller.get(id=task_id)
             if latest_task.status == ProductImportTaskStatus.CANCELED:
                 canceled = True
@@ -135,7 +172,7 @@ async def run_product_import(task_id: int) -> None:
                 await product_import_task_item_controller.mark_failed(item.id, message="; ".join(row_errors))
                 await product_import_task_controller.update_progress(
                     task_id,
-                    total_count=parse_result.total_rows,
+                    total_count=total_rows,
                     processed_count=processed_count,
                     success_count=success_count,
                     failed_count=failed_count,
@@ -166,12 +203,9 @@ async def run_product_import(task_id: int) -> None:
 
                 success_count += 1
                 processed_count += 1
-                success_message = "创建成功"
-                if row.duplicate_hint:
-                    success_message = f"{success_message}; 检测到同名好物"
                 await product_import_task_item_controller.mark_success(
                     item.id,
-                    message=success_message,
+                    message="创建成功",
                     product_id=product.id,
                 )
             except HTTPException as exc:
@@ -185,7 +219,7 @@ async def run_product_import(task_id: int) -> None:
 
             await product_import_task_controller.update_progress(
                 task_id,
-                total_count=parse_result.total_rows,
+                total_count=total_rows,
                 processed_count=processed_count,
                 success_count=success_count,
                 failed_count=failed_count,
@@ -193,6 +227,12 @@ async def run_product_import(task_id: int) -> None:
             )
 
         error_report_path = await generate_error_report(task_id)
+        result_summary = {
+            **dict(task.result_summary or {}),
+            "total_count": total_rows,
+            "valid_rows": valid_rows,
+            "invalid_rows": invalid_rows,
+        }
         if canceled:
             await product_import_task_controller.update(
                 id=task_id,
@@ -202,13 +242,9 @@ async def run_product_import(task_id: int) -> None:
                     "success_count": success_count,
                     "failed_count": failed_count,
                     "progress": 0
-                    if not parse_result.total_rows
-                    else min(100, int((processed_count / parse_result.total_rows) * 100)),
-                    "result_summary": {
-                        "total_count": parse_result.total_rows,
-                        "valid_rows": parse_result.valid_rows,
-                        "invalid_rows": parse_result.invalid_rows,
-                    },
+                    if not total_rows
+                    else min(100, int((processed_count / total_rows) * 100)),
+                    "result_summary": result_summary,
                     "error_report_path": error_report_path,
                     "finished_at": datetime.now(),
                 },
@@ -218,12 +254,8 @@ async def run_product_import(task_id: int) -> None:
                 task_id,
                 success_count=success_count,
                 failed_count=failed_count,
-                total_count=parse_result.total_rows,
-                result_summary={
-                    "total_count": parse_result.total_rows,
-                    "valid_rows": parse_result.valid_rows,
-                    "invalid_rows": parse_result.invalid_rows,
-                },
+                total_count=total_rows,
+                result_summary=result_summary,
                 error_report_path=error_report_path,
             )
     except HTTPException as exc:
@@ -231,8 +263,13 @@ async def run_product_import(task_id: int) -> None:
             task_id,
             success_count=success_count,
             failed_count=max(failed_count, 1),
-            total_count=processed_count,
-            result_summary={"total_count": processed_count},
+            total_count=total_rows or processed_count,
+            result_summary={
+                **dict(task.result_summary or {}),
+                "total_count": total_rows or processed_count,
+                "valid_rows": valid_rows,
+                "invalid_rows": invalid_rows,
+            },
             error_message=str(exc.detail),
         )
     except Exception as exc:
@@ -240,15 +277,22 @@ async def run_product_import(task_id: int) -> None:
             task_id,
             success_count=success_count,
             failed_count=max(failed_count, 1),
-            total_count=processed_count,
-            result_summary={"total_count": processed_count},
+            total_count=total_rows or processed_count,
+            result_summary={
+                **dict(task.result_summary or {}),
+                "total_count": total_rows or processed_count,
+                "valid_rows": valid_rows,
+                "invalid_rows": invalid_rows,
+            },
             error_message=str(exc),
         )
     finally:
         if extract_dir and os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
+        if zip_path and os.path.exists(zip_path):
+            await cleanup_product_import_upload(zip_path)
 
 
 @celery_app.task(name="product_import.run")
-def run_product_import_task(task_id: int) -> None:
-    asyncio.run(run_product_import(task_id))
+def run_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
+    asyncio.run(run_product_import(task_id, retry_row_nos=retry_row_nos))

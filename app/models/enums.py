@@ -25,7 +25,7 @@ class ProductImportTaskStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCESS = "success"
-    PARTIAL_FAILED = "partial_failed"
+    WARN = "warn"
     FAILED = "failed"
     CANCELED = "canceled"
 

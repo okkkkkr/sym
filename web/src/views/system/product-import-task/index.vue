@@ -1,12 +1,31 @@
 <script setup>
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref, resolveDirective, withDirectives } from 'vue'
-import { NButton, NCard, NDrawer, NDrawerContent, NEmpty, NPopconfirm, NProgress, NSelect, NSpace, NTag } from 'naive-ui'
+import {
+  computed,
+  h,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+} from 'vue'
+import {
+  NButton,
+  NCard,
+  NDrawer,
+  NDrawerContent,
+  NEmpty,
+  NPopconfirm,
+  NProgress,
+  NSelect,
+  NSpace,
+  NTag,
+} from 'naive-ui'
 
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
+import { usePermissionStore, useUserStore } from '@/store'
 import { formatDate } from '@/utils'
 
 defineOptions({ name: '导入任务记录' })
@@ -14,6 +33,8 @@ defineOptions({ name: '导入任务记录' })
 const $table = ref(null)
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const permissionStore = usePermissionStore()
 const queryItems = ref({ status: null })
 const sorter = ref({ columnKey: 'created_at', order: 'descend' })
 const tableData = ref([])
@@ -24,7 +45,6 @@ const detailLoading = ref(false)
 const detailStatus = ref(null)
 const detailPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const pollingTimer = ref(null)
-const vPermission = resolveDirective('permission')
 
 const statusOptions = [
   { label: '全部状态', value: null },
@@ -33,7 +53,7 @@ const statusOptions = [
   { label: '排队中', value: 'queued' },
   { label: '执行中', value: 'running' },
   { label: '成功', value: 'success' },
-  { label: '部分失败', value: 'partial_failed' },
+  { label: '警告', value: 'warn' },
   { label: '失败', value: 'failed' },
   { label: '已取消', value: 'canceled' },
 ]
@@ -42,10 +62,15 @@ function getTaskTableData(params = {}) {
   return api.getProductImportTasks(params)
 }
 
+function canAccess(permission) {
+  if (userStore.isSuperUser) return true
+  return permissionStore.apis.includes(permission)
+}
+
 function statusTagType(status) {
   if (status === 'success') return 'success'
-  if (status === 'failed' || status === 'partial_failed') return 'error'
-  if (status === 'running') return 'warning'
+  if (status === 'warn' || status === 'running') return 'warning'
+  if (status === 'failed') return 'error'
   return 'info'
 }
 
@@ -56,15 +81,38 @@ function itemStatusTagType(status) {
 }
 
 function statusLabel(status) {
-  return statusOptions.find((item) => item.value === status)?.label || status || '-'
+  return (
+    statusOptions.find((item) => item.value === status)?.label ||
+    detailStatusOptions.find((item) => item.value === status)?.label ||
+    status ||
+    '-'
+  )
+}
+
+function canRetryTask(row) {
+  return ['failed', 'warn', 'canceled'].includes(row?.status)
+}
+
+function canRetryFailedRows(row) {
+  return canRetryTask(row) && Number(row?.failed_count || 0) > 0
+}
+
+function canCancelTask(row) {
+  return ['pending', 'uploading', 'queued', 'running'].includes(row?.status)
 }
 
 const taskSummaryCards = computed(() => {
   const tasks = tableData.value || []
   const total = tasks.length
-  const runningCount = tasks.filter((item) => ['pending', 'uploading', 'queued', 'running'].includes(item.status)).length
-  const failedCount = tasks.filter((item) => ['failed', 'partial_failed'].includes(item.status)).length
-  const latestFinished = tasks.find((item) => ['success', 'partial_failed', 'failed', 'canceled'].includes(item.status))
+  const runningCount = tasks.filter((item) =>
+    ['pending', 'uploading', 'queued', 'running'].includes(item.status),
+  ).length
+  const failedCount = tasks.filter((item) =>
+    ['warn', 'failed'].includes(item.status),
+  ).length
+  const latestFinished = tasks.find((item) =>
+    ['success', 'warn', 'failed', 'canceled'].includes(item.status),
+  )
 
   return [
     {
@@ -89,7 +137,9 @@ const taskSummaryCards = computed(() => {
       key: 'latest',
       title: '最近完成状态',
       value: latestFinished ? statusLabel(latestFinished.status) : '无',
-      helper: latestFinished ? `${latestFinished.filename} · ${formatDate(latestFinished.finished_at || latestFinished.updated_at || latestFinished.created_at)}` : '等待首个完成任务',
+      helper: latestFinished
+        ? `${latestFinished.filename} · ${formatDate(latestFinished.finished_at || latestFinished.updated_at || latestFinished.created_at)}`
+        : '等待首个完成任务',
     },
   ]
 })
@@ -102,11 +152,25 @@ const detailStatusOptions = [
   { label: '待处理', value: 'pending' },
 ]
 
-const isCurrentTaskRunning = computed(() => ['queued', 'running', 'uploading', 'pending'].includes(currentTask.value?.status))
-const hasActiveTasks = computed(() => (tableData.value || []).some((item) => ['pending', 'uploading', 'queued', 'running'].includes(item.status)))
-const shouldPoll = computed(() => !document.hidden && (hasActiveTasks.value || (detailVisible.value && isCurrentTaskRunning.value)))
-const detailStatusBreakdown = computed(() => currentTask.value?.detail_summary?.status_breakdown || [])
-const detailErrorCategories = computed(() => currentTask.value?.detail_summary?.error_categories || [])
+const isCurrentTaskRunning = computed(() =>
+  ['queued', 'running', 'uploading', 'pending'].includes(currentTask.value?.status),
+)
+const hasActiveTasks = computed(() =>
+  (tableData.value || []).some((item) =>
+    ['pending', 'uploading', 'queued', 'running'].includes(item.status),
+  ),
+)
+const shouldPoll = computed(
+  () =>
+    !document.hidden &&
+    (hasActiveTasks.value || (detailVisible.value && isCurrentTaskRunning.value)),
+)
+const detailStatusBreakdown = computed(
+  () => currentTask.value?.detail_summary?.status_breakdown || [],
+)
+const detailErrorCategories = computed(
+  () => currentTask.value?.detail_summary?.error_categories || [],
+)
 const detailOverviewCards = computed(() => {
   if (!currentTask.value) return []
   const resultSummary = currentTask.value.result_summary || {}
@@ -154,7 +218,7 @@ const columns = computed(() => [
     width: 120,
     align: 'center',
     render(row) {
-      return h(NTag, { type: statusTagType(row.status) }, { default: () => row.status || '-' })
+      return h(NTag, { type: statusTagType(row.status) }, { default: () => statusLabel(row.status) })
     },
   },
   {
@@ -187,56 +251,60 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 260,
+    width: 280,
     align: 'center',
     render(row) {
-      return h('div', { style: 'display:flex;justify-content:center;gap:8px;flex-wrap:wrap;' }, [
+      const actions = [
         h(
           NButton,
           {
-            size: 'small',
+            size: 'tiny',
             quaternary: true,
             type: 'primary',
             onClick: () => openTaskDetail(row),
           },
-          { default: () => '详情' }
+          { default: () => '详情' },
         ),
-        withDirectives(
+      ]
+      if (canAccess('get/api/v1/product/import/task/errors')) {
+        actions.push(
           h(
             NButton,
             {
-              size: 'small',
+              size: 'tiny',
               quaternary: true,
               type: 'info',
               disabled: !row.error_report_path,
               onClick: () => api.downloadProductImportErrors(row.id),
             },
-            { default: () => '错误报告' }
+            { default: () => '错误报告' },
           ),
-          [[vPermission, 'get/api/v1/product/import/task/errors']]
-        ),
-        withDirectives(
+        )
+      }
+      if (canAccess('post/api/v1/product/import/task/retry-failed')) {
+        actions.push(
           h(
             NPopconfirm,
-            { onPositiveClick: () => handleRetry(row) },
+            { onPositiveClick: () => handleRetryFailed(row) },
             {
               trigger: () =>
                 h(
                   NButton,
                   {
-                    size: 'small',
+                    size: 'tiny',
                     quaternary: true,
                     type: 'warning',
-                    disabled: !['failed', 'partial_failed', 'canceled'].includes(row.status),
+                    disabled: !canRetryFailedRows(row),
                   },
-                  { default: () => '重试' }
+                  { default: () => '失败项重试' },
                 ),
-              default: () => '确认重试该导入任务吗？',
-            }
+              default: () => '确认仅重试当前任务的失败项吗？',
+            },
           ),
-          [[vPermission, 'post/api/v1/product/import/task/retry']]
-        ),
-        withDirectives(
+        )
+      }
+      if (canAccess('post/api/v1/product/import/task/cancel')) {
+        actions.push(
           h(
             NPopconfirm,
             { onPositiveClick: () => handleCancel(row) },
@@ -245,19 +313,19 @@ const columns = computed(() => [
                 h(
                   NButton,
                   {
-                    size: 'small',
+                    size: 'tiny',
                     quaternary: true,
                     type: 'error',
-                    disabled: !['pending', 'uploading', 'queued', 'running'].includes(row.status),
+                    disabled: !canCancelTask(row),
                   },
-                  { default: () => '取消' }
+                  { default: () => '取消' },
                 ),
               default: () => '确认取消该导入任务吗？',
-            }
+            },
           ),
-          [[vPermission, 'post/api/v1/product/import/task/cancel']]
-        ),
-      ])
+        )
+      }
+      return h('div', { style: 'display:flex;justify-content:center;gap:8px;flex-wrap:wrap;' }, actions)
     },
   },
 ])
@@ -334,6 +402,15 @@ async function handleRetry(row) {
   $table.value?.handleSearch()
   if (currentTask.value?.id === row.id) {
     await Promise.all([fetchTaskDetail(row.id), fetchDetailItems()])
+  }
+}
+
+async function handleRetryFailed(row) {
+  const res = await api.retryFailedProductImportTask({ task_id: row.id })
+  $message.success('失败项已重新入队')
+  await $table.value?.handleSearch()
+  if (res.data?.task_id) {
+    await openTaskDetail({ id: res.data.task_id })
   }
 }
 
@@ -433,18 +510,35 @@ onBeforeUnmount(() => {
       </template>
     </CrudTable>
 
-    <NDrawer v-model:show="detailVisible" placement="right" :width="720" @after-leave="currentTask = null">
-      <NDrawerContent v-if="currentTask" :title="`任务详情 #${currentTask.id}`" closable @close="closeDetail">
+    <NDrawer
+      v-model:show="detailVisible"
+      placement="right"
+      :width="720"
+      @after-leave="currentTask = null"
+    >
+      <NDrawerContent
+        v-if="currentTask"
+        :title="`任务详情 #${currentTask.id}`"
+        closable
+        @close="closeDetail"
+      >
         <NSpace vertical :size="16">
           <div class="detail-meta">
-            <NTag :type="statusTagType(currentTask.status)">{{ statusLabel(currentTask.status) }}</NTag>
+            <NTag :type="statusTagType(currentTask.status)">{{
+              statusLabel(currentTask.status)
+            }}</NTag>
             <span>文件：{{ currentTask.filename }}</span>
             <span>进度：{{ currentTask.progress || 0 }}%</span>
             <span>成功：{{ currentTask.success_count || 0 }}</span>
             <span>失败：{{ currentTask.failed_count || 0 }}</span>
           </div>
 
-          <NProgress type="line" :percentage="currentTask.progress || 0" :show-indicator="true" />
+          <NProgress
+            type="line"
+            :percentage="currentTask.progress || 0"
+            :status="currentTask.progress === 100 ? 'success' : 'info'"
+            indicator-placement="inside"
+          />
 
           <div class="detail-overview-grid">
             <div class="detail-overview-card">
@@ -453,11 +547,15 @@ onBeforeUnmount(() => {
             </div>
             <div class="detail-overview-card">
               <div class="detail-overview-label">开始时间</div>
-              <div class="detail-overview-value">{{ currentTask.started_at ? formatDate(currentTask.started_at) : '-' }}</div>
+              <div class="detail-overview-value">
+                {{ currentTask.started_at ? formatDate(currentTask.started_at) : '-' }}
+              </div>
             </div>
             <div class="detail-overview-card">
               <div class="detail-overview-label">结束时间</div>
-              <div class="detail-overview-value">{{ currentTask.finished_at ? formatDate(currentTask.finished_at) : '-' }}</div>
+              <div class="detail-overview-value">
+                {{ currentTask.finished_at ? formatDate(currentTask.finished_at) : '-' }}
+              </div>
             </div>
             <div class="detail-overview-card">
               <div class="detail-overview-label">导入策略</div>
@@ -475,7 +573,11 @@ onBeforeUnmount(() => {
           <div class="detail-section">
             <div class="detail-section-title">行级状态分布</div>
             <div v-if="detailStatusBreakdown.length" class="detail-pill-grid">
-              <div v-for="item in detailStatusBreakdown" :key="item.status" class="detail-pill-card">
+              <div
+                v-for="item in detailStatusBreakdown"
+                :key="item.status"
+                class="detail-pill-card"
+              >
                 <NTag :type="itemStatusTagType(item.status)">{{ statusLabel(item.status) }}</NTag>
                 <span class="detail-pill-count">{{ item.count }}</span>
               </div>
@@ -486,7 +588,11 @@ onBeforeUnmount(() => {
           <div class="detail-section">
             <div class="detail-section-title">错误原因聚合</div>
             <div v-if="detailErrorCategories.length" class="detail-error-grid">
-              <div v-for="item in detailErrorCategories" :key="item.message" class="detail-error-card">
+              <div
+                v-for="item in detailErrorCategories"
+                :key="item.message"
+                class="detail-error-card"
+              >
                 <div class="detail-error-card-message">{{ item.message }}</div>
                 <div class="detail-error-card-count">{{ item.count }} 次</div>
               </div>
@@ -507,14 +613,31 @@ onBeforeUnmount(() => {
               placeholder="筛选明细状态"
               @update:value="handleDetailStatusChange"
             />
+            <NSpace>
+              <NButton
+                v-if="canAccess('post/api/v1/product/import/task/retry-failed')"
+                type="warning"
+                secondary
+                :disabled="!canRetryFailedRows(currentTask)"
+                @click="handleRetryFailed(currentTask)"
+              >
+                失败项重试
+              </NButton>
+              <NButton
+                v-if="canAccess('post/api/v1/product/import/task/retry')"
+                type="default"
+                :disabled="!canRetryTask(currentTask)"
+                @click="handleRetry(currentTask)"
+              >
+                整任务重试
+              </NButton>
+            </NSpace>
             <div class="detail-toolbar-text">
               共 {{ detailPagination.total }} 条明细，当前第 {{ detailPagination.page }} 页
             </div>
           </div>
 
-          <div v-if="detailLoading" class="detail-loading">
-            加载中...
-          </div>
+          <div v-if="detailLoading" class="detail-loading">加载中...</div>
           <div v-else-if="detailItems.length" class="detail-items">
             <div v-for="(item, index) in detailItems" :key="item.id" class="detail-item-row">
               <div class="detail-item-head">
@@ -528,7 +651,7 @@ onBeforeUnmount(() => {
                 <div>分类：{{ item.category_name || '-' }}</div>
                 <div>品牌：{{ item.brand_name || '-' }}</div>
                 <div>产品ID：{{ item.product_id || '-' }}</div>
-                <div>重复提示：{{ item.duplicate_hint || '-' }}</div>
+                <div>重复提示：{{ item.duplicate_hint ? '是' : '否' }}</div>
               </div>
               <div class="detail-item-message">{{ item.message || '-' }}</div>
             </div>

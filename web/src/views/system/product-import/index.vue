@@ -19,6 +19,7 @@ const uploadStatusText = ref('')
 const uploadEtaText = ref('')
 const activeUploadSession = ref(null)
 const pauseRequested = ref(false)
+const uploadAbortController = ref(null)
 
 const chunkSize = 5 * 1024 * 1024
 const maxFileSize = 500 * 1024 * 1024
@@ -36,6 +37,7 @@ const uploadButtonText = computed(() => {
 })
 
 const pauseButtonText = computed(() => (pauseRequested.value ? '继续上传' : '暂停上传'))
+const uploadProgressStatus = computed(() => (uploadPercent.value >= 100 ? 'success' : 'info'))
 
 const canTogglePause = computed(() => {
   if (!selectedFile.value) return false
@@ -219,7 +221,11 @@ async function startUpload() {
         selectedFile.value.slice(start, end),
         `${selectedFile.value.name}.part${chunkIndex}`
       )
-      const chunkRes = await api.uploadProductImportChunk(formData)
+      uploadAbortController.value = new AbortController()
+      const chunkRes = await api.uploadProductImportChunk(formData, {
+        signal: uploadAbortController.value.signal,
+      })
+      uploadAbortController.value = null
       const uploadedChunks = chunkRes.data.uploaded_chunks || []
       uploadedChunkSet.clear()
       uploadedChunks.forEach((item) => uploadedChunkSet.add(item))
@@ -247,6 +253,13 @@ async function startUpload() {
     $message.success('导入任务已创建并进入队列')
     router.push(`/batch/product-import-task?task_id=${session.task_id}`)
   } catch (error) {
+    uploadAbortController.value = null
+    if (error.code === 'ERR_CANCELED' && pauseRequested.value) {
+      uploadStatusText.value = `上传已暂停，当前已完成 ${activeUploadSession.value?.uploaded_chunks?.length || 0}/${totalChunks} 个分片`
+      uploadSpeedText.value = ''
+      uploadEtaText.value = ''
+      return
+    }
     uploadStatusText.value = '上传中断，可稍后继续上传'
     uploadSpeedText.value = ''
     uploadEtaText.value = ''
@@ -260,6 +273,7 @@ function togglePauseUpload() {
   if (uploadLoading.value) {
     pauseRequested.value = true
     uploadStatusText.value = '正在等待当前分片上传完成后暂停'
+    uploadAbortController.value?.abort()
     return
   }
   if (activeUploadSession.value?.upload_id) {
@@ -337,10 +351,11 @@ function goToTaskCenter() {
           </div>
           <NProgress
             v-if="uploadLoading || uploadPercent > 0"
+            :status="uploadProgressStatus"
             class="upload-progress"
             type="line"
             :percentage="uploadPercent"
-            :show-indicator="true"
+            indicator-placement="inside"
           />
         </NSpace>
       </NCard>
@@ -350,7 +365,7 @@ function goToTaskCenter() {
           <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
           <div>2. 品牌、分类、标签均按名称精确匹配。</div>
           <div>3. 图片目录至少包含一张图片，优先使用文件名含 _cover 的图片作为封面。</div>
-          <div>4. 同名好物不会覆盖，只会在结果中提示重复风险。</div>
+          <div>4. 同名好物会直接拦截并记为失败，不会创建重复记录。</div>
         </NSpace>
       </NCard>
 
@@ -410,10 +425,5 @@ function goToTaskCenter() {
 .upload-eta {
   font-size: 13px;
   color: #7c3aed;
-}
-
-.upload-progress :deep(.n-progress-graph-line-indicator) {
-  white-space: nowrap;
-  min-width: 40px;
 }
 </style>

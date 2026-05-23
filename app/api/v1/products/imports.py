@@ -94,14 +94,14 @@ def is_celery_broker_reachable(timeout: float = 0.3) -> bool:
         return False
 
 
-def dispatch_product_import_task(task_id: int) -> None:
+def dispatch_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
     try:
         if not is_celery_broker_reachable():
             raise ConnectionError(f"celery broker unreachable: {settings.CELERY_BROKER_URL}")
-        run_product_import_task.apply_async(args=[task_id], retry=False)
+        run_product_import_task.apply_async(args=[task_id, retry_row_nos], retry=False)
     except Exception as exc:
         logger.warning("dispatch product import task via celery failed, fallback to local async run: {}", exc)
-        asyncio.create_task(run_product_import(task_id))
+        asyncio.create_task(run_product_import(task_id, retry_row_nos=retry_row_nos))
 
 
 def build_product_import_template_content() -> bytes:
@@ -213,7 +213,10 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
     task_id = int(merged_meta["task_id"])
     merged_file_path = merged_meta["merged_file_path"]
-    storage_key = os.path.relpath(merged_file_path, settings.BASE_DIR)
+    storage_key = await storage_service.upload_file(
+        merged_file_path,
+        f"product-import/raw/{task_id}/source.zip",
+    )
     await product_import_task_controller.update(
         id=task_id,
         obj_in={
@@ -221,6 +224,7 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
             "status": ProductImportTaskStatus.QUEUED,
         },
     )
+    await product_import_upload_service.cleanup_upload(payload.upload_id)
     dispatch_product_import_task(task_id)
     return Success(
         data={
@@ -238,6 +242,24 @@ def build_task_search(status: str | None, current_user: User) -> Q:
     if not current_user.is_superuser:
         query &= Q(created_by=current_user.id)
     return query
+
+
+def resolve_task_source_path(storage_key: str) -> str | None:
+    stored_path = storage_service.resolve_stored_path(storage_key)
+    if stored_path and os.path.exists(stored_path):
+        return stored_path
+    if os.path.isabs(storage_key) and os.path.exists(storage_key):
+        return storage_key
+    relative_path = os.path.join(settings.BASE_DIR, storage_key)
+    if os.path.exists(relative_path):
+        return relative_path
+    return None
+
+
+def ensure_task_source_available(storage_key: str) -> None:
+    if resolve_task_source_path(storage_key):
+        return
+    raise HTTPException(status_code=400, detail="原始导入包不可用，无法重试")
 
 
 async def build_task_detail_summary(task_id: int) -> dict:
@@ -348,10 +370,11 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
         raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
     if task.status not in {
         ProductImportTaskStatus.FAILED,
-        ProductImportTaskStatus.PARTIAL_FAILED,
+        ProductImportTaskStatus.WARN,
         ProductImportTaskStatus.CANCELED,
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可重试任务")
+    ensure_task_source_available(task.storage_key)
 
     await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
     await product_import_task_controller.update(
@@ -371,6 +394,51 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
     )
     dispatch_product_import_task(payload.task_id)
     return Success(msg="任务已重新加入队列")
+
+
+@router.post("/task/retry-failed", summary="仅重试好物导入失败项")
+async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
+    task = await product_import_task_controller.get(id=payload.task_id)
+    if not current_user.is_superuser and task.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
+    if task.status not in {
+        ProductImportTaskStatus.FAILED,
+        ProductImportTaskStatus.WARN,
+        ProductImportTaskStatus.CANCELED,
+    }:
+        raise HTTPException(status_code=400, detail="当前状态下不可重试失败项")
+    ensure_task_source_available(task.storage_key)
+
+    failed_row_nos = await product_import_task_item_controller.model.filter(
+        task_id=payload.task_id,
+        status=ProductImportTaskItemStatus.FAILED,
+    ).order_by("row_no", "id").values_list("row_no", flat=True)
+    retry_row_nos = list(dict.fromkeys(failed_row_nos))
+    if not retry_row_nos:
+        raise HTTPException(status_code=400, detail="当前任务没有可重试的失败项")
+
+    retry_task = await product_import_task_controller.create_task(
+        filename=task.filename,
+        storage_key=task.storage_key,
+        created_by=current_user.id,
+        import_strategy=task.import_strategy,
+        status=ProductImportTaskStatus.QUEUED,
+    )
+    await product_import_task_controller.update(
+        id=retry_task.id,
+        obj_in={
+            "result_summary": {
+                "retry_source_task_id": task.id,
+                "retry_mode": "failed_only",
+                "retry_row_count": len(retry_row_nos),
+            },
+        },
+    )
+    dispatch_product_import_task(retry_task.id, retry_row_nos=retry_row_nos)
+    return Success(
+        msg="失败项已重新加入队列",
+        data={"task_id": retry_task.id, "retry_row_count": len(retry_row_nos)},
+    )
 
 
 @router.get("/task/errors", summary="下载好物导入错误报告")

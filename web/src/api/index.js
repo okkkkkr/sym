@@ -145,7 +145,8 @@ export default {
   deleteProduct: (data = {}) => request.delete('/product/delete', { data }),
   exportProduct: (data = {}) => downloadScopedFile('/product/export', data, 'product-export.xlsx'),
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
-  uploadProductImportChunk: (data) => request.post('/product/import/upload-chunk', data),
+  uploadProductImportChunk: (data, config = {}) =>
+    request.post('/product/import/upload-chunk', data, config),
   getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
   completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
@@ -153,6 +154,7 @@ export default {
   getProductImportTaskItems: (params = {}) => request.get('/product/import/task/items', { params }),
   cancelProductImportTask: (data = {}) => request.post('/product/import/task/cancel', data),
   retryProductImportTask: (data = {}) => request.post('/product/import/task/retry', data),
+  retryFailedProductImportTask: (data = {}) => request.post('/product/import/task/retry-failed', data),
   downloadProductImportTemplate: () =>
     downloadScopedGetFile('/product/import/template', 'product-import-template.xlsx'),
   downloadProductImportExample: () =>

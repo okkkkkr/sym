@@ -33,6 +33,9 @@ export function resResolve(response) {
 }
 
 export async function resReject(error) {
+  if (error?.code === 'ERR_CANCELED') {
+    return Promise.reject({ code: error.code, message: error.message || '请求已取消', error })
+  }
   if (!error || !error.response) {
     const code = error?.code
     /** 根据code处理对应的操作，并返回处理后的message */

@@ -84,7 +84,7 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         if failed_count <= 0:
             status = ProductImportTaskStatus.SUCCESS
         elif success_count > 0:
-            status = ProductImportTaskStatus.PARTIAL_FAILED
+            status = ProductImportTaskStatus.WARN
         else:
             status = ProductImportTaskStatus.FAILED
 
