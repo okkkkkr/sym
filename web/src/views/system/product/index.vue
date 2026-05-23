@@ -704,7 +704,7 @@ function goToProductImport() {
       @on-data-change="clearSelection"
     >
       <template #queryBar>
-        <QueryBarItem label="名称" :label-width="50">
+        <QueryBarItem label="名称" :label-width="40">
           <NInput
             v-model:value="queryItems.keyword"
             clearable

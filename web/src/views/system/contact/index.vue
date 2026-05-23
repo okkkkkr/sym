@@ -40,7 +40,7 @@ const initForm = {
   contact_type: null,
   contact_value: '',
   link_url: '',
-  qr_image_url: DEFAULT_QR_IMAGE_URL,
+  qr_image_url: '',
   order: 0,
   is_active: true,
 }
@@ -116,11 +116,6 @@ const rules = {
 onMounted(() => {
   $table.value?.handleSearch()
 })
-
-function openAddModal() {
-  handleAdd()
-  modalForm.value.qr_image_url = DEFAULT_QR_IMAGE_URL
-}
 
 const columns = computed(() => [
   {
@@ -210,7 +205,7 @@ const columns = computed(() => [
               size: 'tiny',
               quaternary: true,
               type: 'info',
-              onClick: () => handleEdit({ ...row, qr_image_url: row.qr_image_url || DEFAULT_QR_IMAGE_URL }),
+              onClick: () => handleEdit(row),
             },
             {
               default: () => '编辑',
@@ -279,7 +274,7 @@ async function toggleStatus(row, nextValue) {
 <template>
   <CommonPage show-footer title="联系方式列表">
     <template #action>
-      <NButton v-permission="'post/api/v1/contact/create'" type="primary" @click="openAddModal">
+      <NButton v-permission="'post/api/v1/contact/create'" type="primary" @click="handleAdd">
         <TheIcon icon="material-symbols:add" :size="18" class="mr-5" />新建联系方式
       </NButton>
     </template>

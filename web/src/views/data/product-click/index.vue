@@ -100,7 +100,7 @@ const columns = computed(() => [
       :scroll-x="980"
     >
       <template #queryBar>
-        <QueryBarItem label="好物名称" :label-width="50">
+        <QueryBarItem label="好物名称" :label-width="70">
           <NInput
             v-model:value="queryItems.keyword"
             clearable
@@ -109,7 +109,7 @@ const columns = computed(() => [
             @keypress.enter="$table?.handleSearch()"
           />
         </QueryBarItem>
-        <QueryBarItem label="上架状态" :label-width="40">
+        <QueryBarItem label="上架状态" :label-width="70">
           <NSelect
             v-model:value="queryItems.status"
             clearable
