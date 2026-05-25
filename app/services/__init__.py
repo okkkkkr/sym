@@ -1,3 +1,4 @@
+from .product_media_upload import product_media_upload_service
 from .product_import_parser import product_import_parser_service
 from .product_import_upload import product_import_upload_service
 from .product_import_zip import product_import_zip_service

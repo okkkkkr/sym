@@ -18,6 +18,7 @@ from app.models.admin import Api, AuditLog, Banner, Brand, Category, Contact, Me
 from app.schemas.base import Fail, Success
 from app.schemas.login import *
 from app.schemas.stats import TrackBrandSearchIn, TrackProductClickIn, TrackSiteVisitIn
+from app.services.product_media_upload import product_media_upload_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
 from app.utils.jwt_utils import create_access_token
@@ -366,9 +367,9 @@ def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
         "detailDescription": detail_text or product_dict.get("desc") or "",
         "category": category_key,
         "brandName": brand_name,
-        "coverImageUrl": product_dict.get("cover_image_url"),
-        "imageUrls": product_dict.get("image_urls") or [],
-        "videoUrls": product_dict.get("video_urls") or [],
+        "coverImageUrl": product_media_upload_service.serialize_stored_url(product_dict.get("cover_image_url")),
+        "imageUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("image_urls") or []],
+        "videoUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("video_urls") or []],
         "clickCount": product_dict.get("click_count", 0),
     }
 

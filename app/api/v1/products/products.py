@@ -5,16 +5,37 @@ from tortoise.expressions import Q
 from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.product import product_controller
+from app.core.dependency import DependAuth
+from app.models import User
+from app.services.product_media_upload import product_media_upload_service
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
-from app.schemas.products import ProductCreate, ProductUpdate
+from app.schemas.products import ProductCreate, ProductMediaUploadTokenIn, ProductUpdate
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter()
 
 
+@router.post("/media/upload-token", summary="获取好物媒体上传凭证")
+async def get_product_media_upload_token(payload: ProductMediaUploadTokenIn, current_user: User = DependAuth):
+    _ = current_user
+    return Success(data=product_media_upload_service.create_upload_credentials(**payload.model_dump()))
+
+
 async def serialize_product_payload(product_obj):
     product_data = await product_obj.to_dict()
+    product_data["cover_image_storage_url"] = product_data.get("cover_image_url") or ""
+    product_data["image_storage_urls"] = list(product_data.get("image_urls") or [])
+    product_data["video_storage_urls"] = list(product_data.get("video_urls") or [])
+    product_data["cover_image_url"] = product_media_upload_service.serialize_stored_url(product_data.get("cover_image_url"))
+    product_data["image_urls"] = [
+        product_media_upload_service.serialize_stored_url(item)
+        for item in product_data.get("image_urls") or []
+    ]
+    product_data["video_urls"] = [
+        product_media_upload_service.serialize_stored_url(item)
+        for item in product_data.get("video_urls") or []
+    ]
     product_data["product_code_custom"] = product_controller.extract_product_code_custom(product_data.get("product_code"))
     product_data["tags"] = [
         {"id": tag.id, "name": tag.name}

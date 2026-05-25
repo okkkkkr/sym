@@ -147,6 +147,7 @@ export default {
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),
+  getProductMediaUploadToken: (data = {}) => request.post('/product/media/upload-token', data),
   getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
   completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),

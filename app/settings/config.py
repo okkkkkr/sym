@@ -2,10 +2,12 @@ import os
 import typing
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     VERSION: str = "0.1.0"
     APP_TITLE: str = "SYM Admin"
     PROJECT_NAME: str = "SYM Admin"
@@ -42,6 +44,9 @@ class Settings(BaseSettings):
     QINIU_SECRET_KEY: str = ""
     QINIU_BUCKET: str = ""
     QINIU_DOMAIN: str = ""
+    QINIU_REGION: str = ""
+    QINIU_IS_PRIVATE: bool = False
+    QINIU_URL_EXPIRE_SECONDS: int = 3600
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"

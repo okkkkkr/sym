@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     image: sym-fast-integration:local
     container_name: sym-fast
+    env_file:
+      - .env
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -17,6 +19,8 @@ services:
       dockerfile: Dockerfile
     image: sym-fast-integration:local
     container_name: sym-worker
+    env_file:
+      - .env
     command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO"]
     restart: unless-stopped
     depends_on:
