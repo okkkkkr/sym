@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     QINIU_SECRET_KEY: str = ""
     QINIU_BUCKET: str = ""
     QINIU_DOMAIN: str = ""
+    QINIU_DOMAIN_SCHEME: str = "https"
     QINIU_REGION: str = ""
     QINIU_IS_PRIVATE: bool = False
     QINIU_URL_EXPIRE_SECONDS: int = 3600

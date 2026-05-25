@@ -12,6 +12,7 @@ class ProductTagOut(BaseModel):
 class BaseProduct(BaseModel):
     category_id: int = Field(..., description="类目ID")
     brand_id: int = Field(..., description="品牌ID")
+    tag_ids: list[int] = Field(default_factory=list, description="标签ID列表")
     name: str = Field(..., description="好物名称")
     product_code_custom: Optional[str] = Field(None, description="好物识别码自定义数字")
     desc: Optional[str] = Field(None, description="好物简介")

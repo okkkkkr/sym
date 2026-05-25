@@ -40,6 +40,8 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
 
         year = datetime.now().year
         prefix = f"{year}{normalized_custom}"
+        if current_code and current_code.partition("-")[0] == prefix:
+            return current_code
         for _ in range(10):
             candidate = f"{prefix}-{self._random_suffix()}"
             exists = await self.model.filter(product_code=candidate).exists()

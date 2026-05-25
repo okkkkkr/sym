@@ -5,7 +5,7 @@ import json
 import mimetypes
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -54,7 +54,7 @@ SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _urlsafe_base64(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).decode().rstrip("=")
+    return base64.urlsafe_b64encode(value).decode()
 
 
 class ProductMediaUploadService:
@@ -77,9 +77,12 @@ class ProductMediaUploadService:
         normalized_domain = str(settings.QINIU_DOMAIN or "").strip()
         if not normalized_domain:
             raise HTTPException(status_code=500, detail="七牛访问域名未配置")
+        normalized_scheme = str(settings.QINIU_DOMAIN_SCHEME or "https").strip().lower() or "https"
+        if normalized_scheme not in {"http", "https"}:
+            raise HTTPException(status_code=500, detail="七牛访问协议配置无效")
         if normalized_domain.startswith(("http://", "https://")):
             return normalized_domain.rstrip("/")
-        return f"https://{normalized_domain.lstrip('/')}".rstrip("/")
+        return f"{normalized_scheme}://{normalized_domain.lstrip('/')}".rstrip("/")
 
     @staticmethod
     def _validate_settings() -> None:
@@ -90,6 +93,7 @@ class ProductMediaUploadService:
                 "QINIU_SECRET_KEY": settings.QINIU_SECRET_KEY,
                 "QINIU_BUCKET": settings.QINIU_BUCKET,
                 "QINIU_DOMAIN": settings.QINIU_DOMAIN,
+                "QINIU_DOMAIN_SCHEME": settings.QINIU_DOMAIN_SCHEME,
                 "QINIU_REGION": settings.QINIU_REGION,
             }.items()
             if not str(value or "").strip()
@@ -132,7 +136,12 @@ class ProductMediaUploadService:
 
     @staticmethod
     def _build_upload_token(object_key: str) -> str:
-        deadline = int((datetime.utcnow() + timedelta(seconds=ProductMediaUploadService.token_expires_in_seconds)).timestamp())
+        deadline = int(
+            (
+                datetime.now(timezone.utc)
+                + timedelta(seconds=ProductMediaUploadService.token_expires_in_seconds)
+            ).timestamp()
+        )
         put_policy = {
             "scope": f"{settings.QINIU_BUCKET}:{object_key}",
             "deadline": deadline,
@@ -165,7 +174,7 @@ class ProductMediaUploadService:
         base_url = self.build_public_url(object_key)
         deadline = int(
             (
-                datetime.utcnow()
+                datetime.now(timezone.utc)
                 + timedelta(seconds=max(1, int(expires_in or settings.QINIU_URL_EXPIRE_SECONDS)))
             ).timestamp()
         )
