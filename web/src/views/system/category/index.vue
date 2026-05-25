@@ -32,6 +32,7 @@ import api from '@/api'
 defineOptions({ name: '分类管理' })
 
 const $table = ref(null)
+const fileInputRef = ref(null)
 const queryItems = ref({})
 const sorter = ref({ columnKey: 'updated_at', order: 'descend' })
 const checkedRowKeys = ref([])
@@ -39,6 +40,7 @@ const batchDeleteModalVisible = ref(false)
 const batchExportModalVisible = ref(false)
 const vPermission = resolveDirective('permission')
 const statusUpdatingIds = ref([])
+const importLoading = ref(false)
 const exportLoading = ref(false)
 const hotDrawerVisible = ref(false)
 const hotConfigLoading = ref(false)
@@ -328,6 +330,27 @@ async function toggleStatus(row, nextValue) {
   $table.value?.handleSearch()
 }
 
+function triggerImport() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileChange(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  const formData = new FormData()
+  formData.append('file', file)
+  importLoading.value = true
+  try {
+    const res = await api.importCategories(formData)
+    $message.success(`导入成功，本次新增 ${res.data?.created ?? 0} 条分类`)
+    $table.value?.handleSearch()
+  } finally {
+    importLoading.value = false
+    event.target.value = ''
+  }
+}
+
 async function openHotDrawer(row) {
   hotDrawerVisible.value = true
   hotConfigLoading.value = true
@@ -455,6 +478,13 @@ async function handleBatchExport(scope) {
 <template>
   <CommonPage show-footer title="分类列表">
     <template #action>
+      <input ref="fileInputRef" type="file" accept=".xlsx" style="display: none" @change="handleFileChange" />
+      <NButton type="default" :loading="importLoading" @click="api.downloadCategoryTemplate()">
+        <TheIcon icon="mdi:download-box-outline" :size="18" class="mr-5" />下载导入模板
+      </NButton>
+      <NButton v-permission="'post/api/v1/category/import'" type="default" :loading="importLoading" @click="triggerImport">
+        <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />批量导入
+      </NButton>
       <NButton v-permission="'post/api/v1/category/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
       </NButton>

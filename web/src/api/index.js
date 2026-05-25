@@ -104,8 +104,12 @@ export default {
   deleteCategory: (data = {}) => request.delete('/category/delete', { data }),
   exportCategory: (data = {}) =>
     downloadScopedFile('/category/export', data, 'category-export.xlsx'),
+  downloadCategoryTemplate: () =>
+    downloadScopedGetFile('/category/template', 'category-import-template.xlsx'),
+  importCategories: (data) => request.post('/category/import', data),
   getCategoryHotConfig: (params = {}) => request.get('/category/hot-config', { params }),
   updateCategoryHotConfig: (data = {}) => request.post('/category/hot-config', data),
+  inheritCategoryContent: (data = {}) => request.post('/category/inherit', data),
   // brands
   getBrandList: (params = {}) => request.get('/brand/list', { params }),
   getBrandById: (params = {}) => request.get('/brand/get', { params }),
@@ -114,6 +118,7 @@ export default {
   deleteBrand: (data = {}) => request.delete('/brand/delete', { data }),
   exportBrand: (data = {}) => downloadScopedFile('/brand/export', data, 'brand-export.xlsx'),
   importBrands: (data) => request.post('/brand/import', data),
+  inheritBrandContent: (data = {}) => request.post('/brand/inherit', data),
   // tags
   getTagList: (params = {}) => request.get('/tag/list', { params }),
   getTagById: (params = {}) => request.get('/tag/get', { params }),
@@ -144,10 +149,10 @@ export default {
   updateProduct: (data = {}) => request.post('/product/update', data),
   deleteProduct: (data = {}) => request.delete('/product/delete', { data }),
   exportProduct: (data = {}) => downloadScopedFile('/product/export', data, 'product-export.xlsx'),
+  getProductMediaUploadToken: (data = {}) => request.post('/product/media/upload-token', data),
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),
-  getProductMediaUploadToken: (data = {}) => request.post('/product/media/upload-token', data),
   getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
   completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
