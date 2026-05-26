@@ -5,8 +5,9 @@ import json
 import mimetypes
 import os
 import re
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 
 from fastapi import HTTPException
 
@@ -34,17 +35,20 @@ QINIU_REGION_UPLOAD_HOSTS = {
 
 PRODUCT_MEDIA_TYPE_RULES = {
     "cover": {
-        "prefix": "products/cover",
+        "prefix": "items/images",
+        "file_prefix": "img",
         "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
         "mime_prefix": "image/",
     },
     "image": {
-        "prefix": "products/image",
+        "prefix": "items/images",
+        "file_prefix": "img",
         "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
         "mime_prefix": "image/",
     },
     "video": {
-        "prefix": "products/video",
+        "prefix": "items/videos",
+        "file_prefix": "vid",
         "extensions": {".mp4", ".mov", ".m4v", ".webm", ".ogg", ".ogv", ".avi", ".mkv"},
         "mime_prefix": "video/",
     },
@@ -131,8 +135,10 @@ class ProductMediaUploadService:
     def _build_object_key(media_type: str, file_name: str) -> str:
         normalized_name = ProductMediaUploadService._sanitize_filename(file_name)
         extension = os.path.splitext(normalized_name)[1].lower()
-        date_path = datetime.now().strftime("%Y/%m/%d")
-        return f"{PRODUCT_MEDIA_TYPE_RULES[media_type]['prefix']}/{date_path}/{uuid4().hex}{extension}"
+        media_rule = PRODUCT_MEDIA_TYPE_RULES[media_type]
+        random_suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(8))
+        date_token = datetime.now().strftime("%Y%m%d")
+        return f"{media_rule['prefix']}/{media_rule['file_prefix']}_{date_token}_{random_suffix}{extension}"
 
     @staticmethod
     def _build_upload_token(object_key: str) -> str:
