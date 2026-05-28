@@ -1,12 +1,5 @@
 <script setup>
-import {
-  computed,
-  h,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-} from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -45,13 +38,15 @@ const detailLoading = ref(false)
 const detailStatus = ref(null)
 const detailPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const pollingTimer = ref(null)
+const activeTaskStatuses = ['pending', 'uploading', 'queued', 'running']
+const finalTaskStatuses = ['success', 'warn', 'failed', 'canceled']
 
 const statusOptions = [
   { label: '全部状态', value: null },
   { label: '待处理', value: 'pending' },
   { label: '上传中', value: 'uploading' },
   { label: '排队中', value: 'queued' },
-  { label: '执行中', value: 'running' },
+  { label: '同步中', value: 'running' },
   { label: '成功', value: 'success' },
   { label: '警告', value: 'warn' },
   { label: '失败', value: 'failed' },
@@ -98,20 +93,45 @@ function canRetryFailedRows(row) {
 }
 
 function canCancelTask(row) {
-  return ['pending', 'uploading', 'queued', 'running'].includes(row?.status)
+  return activeTaskStatuses.includes(row?.status)
+}
+
+function isFinalTaskStatus(status) {
+  return finalTaskStatuses.includes(status)
+}
+
+function canDownloadErrorReport(row) {
+  return isFinalTaskStatus(row?.status) && Boolean(row?.error_report_path)
+}
+
+function taskPhaseDescription(status) {
+  if (status === 'uploading') return '正在接收 ZIP 分片'
+  if (status === 'queued') return 'ZIP 已接收完成，等待后台处理'
+  if (status === 'running') return '正在解析 ZIP、上传素材到七牛并写入数据库'
+  if (status === 'success') return '导入已完成'
+  if (status === 'warn') return '导入已完成，存在部分失败项'
+  if (status === 'failed') return '导入失败，请查看错误明细'
+  if (status === 'canceled') return '任务已取消'
+  return '等待处理'
+}
+
+function taskPrimaryStatus(row) {
+  return activeTaskStatuses.includes(row?.status) ? '后台同步中' : statusLabel(row?.status)
+}
+
+function errorReportHint(row) {
+  if (canDownloadErrorReport(row)) return '错误报告已生成'
+  if (isFinalTaskStatus(row?.status)) return '当前任务没有错误报告'
+  return '任务完成后生成错误报告'
 }
 
 const taskSummaryCards = computed(() => {
   const tasks = tableData.value || []
   const total = tasks.length
-  const runningCount = tasks.filter((item) =>
-    ['pending', 'uploading', 'queued', 'running'].includes(item.status),
-  ).length
-  const failedCount = tasks.filter((item) =>
-    ['warn', 'failed'].includes(item.status),
-  ).length
+  const runningCount = tasks.filter((item) => activeTaskStatuses.includes(item.status)).length
+  const failedCount = tasks.filter((item) => ['warn', 'failed'].includes(item.status)).length
   const latestFinished = tasks.find((item) =>
-    ['success', 'warn', 'failed', 'canceled'].includes(item.status),
+    ['success', 'warn', 'failed', 'canceled'].includes(item.status)
   )
 
   return [
@@ -138,7 +158,9 @@ const taskSummaryCards = computed(() => {
       title: '最近完成状态',
       value: latestFinished ? statusLabel(latestFinished.status) : '无',
       helper: latestFinished
-        ? `${latestFinished.filename} · ${formatDate(latestFinished.finished_at || latestFinished.updated_at || latestFinished.created_at)}`
+        ? `${latestFinished.filename} · ${formatDate(
+            latestFinished.finished_at || latestFinished.updated_at || latestFinished.created_at
+          )}`
         : '等待首个完成任务',
     },
   ]
@@ -152,24 +174,20 @@ const detailStatusOptions = [
   { label: '待处理', value: 'pending' },
 ]
 
-const isCurrentTaskRunning = computed(() =>
-  ['queued', 'running', 'uploading', 'pending'].includes(currentTask.value?.status),
-)
+const isCurrentTaskRunning = computed(() => activeTaskStatuses.includes(currentTask.value?.status))
 const hasActiveTasks = computed(() =>
-  (tableData.value || []).some((item) =>
-    ['pending', 'uploading', 'queued', 'running'].includes(item.status),
-  ),
+  (tableData.value || []).some((item) => activeTaskStatuses.includes(item.status))
 )
 const shouldPoll = computed(
   () =>
     !document.hidden &&
-    (hasActiveTasks.value || (detailVisible.value && isCurrentTaskRunning.value)),
+    (hasActiveTasks.value || (detailVisible.value && isCurrentTaskRunning.value))
 )
 const detailStatusBreakdown = computed(
-  () => currentTask.value?.detail_summary?.status_breakdown || [],
+  () => currentTask.value?.detail_summary?.status_breakdown || []
 )
 const detailErrorCategories = computed(
-  () => currentTask.value?.detail_summary?.error_categories || [],
+  () => currentTask.value?.detail_summary?.error_categories || []
 )
 const detailOverviewCards = computed(() => {
   if (!currentTask.value) return []
@@ -218,7 +236,11 @@ const columns = computed(() => [
     width: 120,
     align: 'center',
     render(row) {
-      return h(NTag, { type: statusTagType(row.status) }, { default: () => statusLabel(row.status) })
+      return h(
+        NTag,
+        { type: statusTagType(row.status) },
+        { default: () => statusLabel(row.status) }
+      )
     },
   },
   {
@@ -263,7 +285,7 @@ const columns = computed(() => [
             type: 'primary',
             onClick: () => openTaskDetail(row),
           },
-          { default: () => '详情' },
+          { default: () => '详情' }
         ),
       ]
       if (canAccess('get/api/v1/product/import/task/errors')) {
@@ -274,11 +296,11 @@ const columns = computed(() => [
               size: 'tiny',
               quaternary: true,
               type: 'info',
-              disabled: !row.error_report_path,
+              disabled: !canDownloadErrorReport(row),
               onClick: () => api.downloadProductImportErrors(row.id),
             },
-            { default: () => '错误报告' },
-          ),
+            { default: () => '错误报告' }
+          )
         )
       }
       if (canAccess('post/api/v1/product/import/task/retry-failed')) {
@@ -296,11 +318,11 @@ const columns = computed(() => [
                     type: 'warning',
                     disabled: !canRetryFailedRows(row),
                   },
-                  { default: () => '失败项重试' },
+                  { default: () => '失败项重试' }
                 ),
               default: () => '确认仅重试当前任务的失败项吗？',
-            },
-          ),
+            }
+          )
         )
       }
       if (canAccess('post/api/v1/product/import/task/cancel')) {
@@ -318,14 +340,18 @@ const columns = computed(() => [
                     type: 'error',
                     disabled: !canCancelTask(row),
                   },
-                  { default: () => '取消' },
+                  { default: () => '取消' }
                 ),
               default: () => '确认取消该导入任务吗？',
-            },
-          ),
+            }
+          )
         )
       }
-      return h('div', { style: 'display:flex;justify-content:center;gap:8px;flex-wrap:wrap;' }, actions)
+      return h(
+        'div',
+        { style: 'display:flex;justify-content:center;gap:8px;flex-wrap:wrap;' },
+        actions
+      )
     },
   },
 ])
@@ -429,8 +455,9 @@ function startPolling() {
   pollingTimer.value = window.setInterval(async () => {
     await $table.value?.handleSearch()
     if (detailVisible.value && currentTask.value?.id) {
+      const shouldRefreshItems = isCurrentTaskRunning.value
       await fetchTaskDetail(currentTask.value.id)
-      if (isCurrentTaskRunning.value) {
+      if (shouldRefreshItems || isCurrentTaskRunning.value) {
         await fetchDetailItems()
       }
     }
@@ -533,6 +560,22 @@ onBeforeUnmount(() => {
             <span>失败：{{ currentTask.failed_count || 0 }}</span>
           </div>
 
+          <div class="detail-sync-panel">
+            <div class="detail-sync-head">
+              <div class="detail-sync-title">{{ taskPrimaryStatus(currentTask) }}</div>
+              <NTag :type="statusTagType(currentTask.status)">{{
+                statusLabel(currentTask.status)
+              }}</NTag>
+            </div>
+            <div class="detail-sync-desc">{{ taskPhaseDescription(currentTask.status) }}</div>
+            <div class="detail-sync-meta">
+              处理进度：{{ currentTask.progress || 0 }}%，已处理
+              {{ currentTask.processed_count || 0 }}/{{ currentTask.total_count || 0 }} 行。进度按
+              Excel 行处理统计。
+            </div>
+            <div class="detail-sync-meta">{{ errorReportHint(currentTask) }}</div>
+          </div>
+
           <NProgress
             type="line"
             :percentage="currentTask.progress || 0"
@@ -614,6 +657,15 @@ onBeforeUnmount(() => {
               @update:value="handleDetailStatusChange"
             />
             <NSpace>
+              <NButton
+                v-if="canAccess('get/api/v1/product/import/task/errors')"
+                type="info"
+                secondary
+                :disabled="!canDownloadErrorReport(currentTask)"
+                @click="api.downloadProductImportErrors(currentTask.id)"
+              >
+                下载错误报告
+              </NButton>
               <NButton
                 v-if="canAccess('post/api/v1/product/import/task/retry-failed')"
                 type="warning"
@@ -710,6 +762,37 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.detail-sync-panel {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.detail-sync-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-sync-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.detail-sync-desc {
+  margin-top: 8px;
+  color: #374151;
+}
+
+.detail-sync-meta {
+  margin-top: 6px;
+  color: #6b7280;
+  line-height: 1.5;
 }
 
 .detail-overview-grid {

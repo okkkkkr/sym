@@ -3,4 +3,6 @@ from .product_import_parser import product_import_parser_service
 from .product_import_upload import product_import_upload_service
 from .product_import_zip import product_import_zip_service
 from .storage import get_storage_service
+from .storage import artifact_storage_service
+from .storage import media_storage_service
 from .storage import storage_service
