@@ -10,7 +10,6 @@ from app.controllers.banner import banner_controller
 from app.controllers.category import category_controller
 from app.controllers.contact import contact_controller
 from app.controllers.product import product_controller
-from app.controllers.tag import tag_controller
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
