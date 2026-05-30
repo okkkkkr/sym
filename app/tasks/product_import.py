@@ -131,6 +131,70 @@ def resolve_task_zip_path(storage_key: str) -> str:
     return os.path.join(settings.BASE_DIR, storage_key)
 
 
+def is_datetime_recent(value: datetime | None, retention_hours: int) -> bool:
+    if value is None:
+        return False
+    return value.timestamp() > datetime.now().timestamp() - max(1, int(retention_hours)) * 3600
+
+
+def parse_task_id(value: object) -> int | None:
+    try:
+        return int(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def cleanup_product_import_temp_files() -> dict:
+    await ensure_tortoise_initialized()
+    stats = {
+        "enabled": settings.PRODUCT_IMPORT_CLEANUP_ENABLED,
+        "deleted_upload_dirs": 0,
+        "deleted_extract_dirs": 0,
+        "skipped_dirs": 0,
+        "deleted_bytes": 0,
+        "failures": [],
+    }
+    if not settings.PRODUCT_IMPORT_CLEANUP_ENABLED:
+        return stats
+
+    retention_hours = settings.PRODUCT_IMPORT_CLEANUP_RETENTION_HOURS
+    for upload_dir in product_import_upload_service.list_expired_upload_dirs(retention_hours):
+        try:
+            task_id = parse_task_id(upload_dir["meta"].get("task_id"))
+            task = await product_import_task_controller.model.get_or_none(id=task_id) if task_id else None
+            if task and task.status in {ProductImportTaskStatus.PENDING, ProductImportTaskStatus.UPLOADING}:
+                await product_import_task_controller.update(
+                    id=task.id,
+                    obj_in={
+                        "status": ProductImportTaskStatus.FAILED,
+                        "error_message": "上传超时，临时文件已清理",
+                        "finished_at": datetime.now(),
+                    },
+                )
+            stats["deleted_bytes"] += product_import_upload_service.cleanup_path(upload_dir["path"])
+            stats["deleted_upload_dirs"] += 1
+        except Exception as exc:
+            stats["failures"].append({"path": upload_dir["path"], "error": str(exc)})
+
+    for extract_dir in product_import_upload_service.list_expired_extract_dirs(retention_hours):
+        try:
+            task_id = extract_dir["task_id"]
+            task = await product_import_task_controller.model.get_or_none(id=task_id) if task_id else None
+            if (
+                task
+                and task.status == ProductImportTaskStatus.RUNNING
+                and is_datetime_recent(task.updated_at, retention_hours)
+            ):
+                stats["skipped_dirs"] += 1
+                continue
+            stats["deleted_bytes"] += product_import_upload_service.cleanup_path(extract_dir["path"])
+            stats["deleted_extract_dirs"] += 1
+        except Exception as exc:
+            stats["failures"].append({"path": extract_dir["path"], "error": str(exc)})
+
+    return stats
+
+
 async def run_product_import(task_id: int, retry_row_nos: list[int] | None = None) -> None:
     await ensure_tortoise_initialized()
     task = await product_import_task_controller.get(id=task_id)
@@ -344,3 +408,8 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
 @celery_app.task(name="product_import.run")
 def run_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
     asyncio.run(run_product_import(task_id, retry_row_nos=retry_row_nos))
+
+
+@celery_app.task(name="product_import.cleanup_temp_files")
+def cleanup_product_import_temp_files_task() -> dict:
+    return asyncio.run(cleanup_product_import_temp_files())

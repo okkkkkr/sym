@@ -16,6 +16,12 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="Asia/Shanghai",
     enable_utc=False,
+    beat_schedule={
+        "product-import-cleanup-temp-files": {
+            "task": "product_import.cleanup_temp_files",
+            "schedule": settings.PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS,
+        }
+    },
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])

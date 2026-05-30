@@ -3,6 +3,7 @@ import os
 import socket
 from collections import Counter
 from base64 import b64decode
+from datetime import datetime
 from io import BytesIO
 from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -213,18 +214,30 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
     task_id = int(merged_meta["task_id"])
     merged_file_path = merged_meta["merged_file_path"]
-    storage_key = await artifact_storage_service.upload_file(
-        merged_file_path,
-        f"product-import/raw/{task_id}/source.zip",
-    )
-    await product_import_task_controller.update(
-        id=task_id,
-        obj_in={
-            "storage_key": storage_key,
-            "status": ProductImportTaskStatus.QUEUED,
-        },
-    )
-    await product_import_upload_service.cleanup_upload(payload.upload_id)
+    try:
+        storage_key = await artifact_storage_service.upload_file(
+            merged_file_path,
+            f"product-import/raw/{task_id}/source.zip",
+        )
+        await product_import_task_controller.update(
+            id=task_id,
+            obj_in={
+                "storage_key": storage_key,
+                "status": ProductImportTaskStatus.QUEUED,
+            },
+        )
+    except Exception as exc:
+        await product_import_task_controller.update(
+            id=task_id,
+            obj_in={
+                "status": ProductImportTaskStatus.FAILED,
+                "error_message": f"上传文件入库失败：{exc}",
+                "finished_at": datetime.now(),
+            },
+        )
+        raise
+    finally:
+        await product_import_upload_service.cleanup_upload(payload.upload_id)
     dispatch_product_import_task(task_id)
     return Success(
         data={
