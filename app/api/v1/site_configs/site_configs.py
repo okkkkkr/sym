@@ -4,7 +4,7 @@ from app.controllers.site_config import serialize_site_config, site_config_contr
 from app.core.dependency import DependAuth
 from app.models import User
 from app.schemas.base import Success
-from app.schemas.site_configs import SiteConfigLogoUploadTokenIn, SiteConfigUpdate
+from app.schemas.site_configs import SiteConfigLogoDeleteIn, SiteConfigLogoUploadTokenIn, SiteConfigUpdate
 from app.services.product_media_upload import product_media_upload_service
 
 router = APIRouter()
@@ -19,6 +19,13 @@ async def get_site_config():
 async def get_site_logo_upload_token(payload: SiteConfigLogoUploadTokenIn, current_user: User = DependAuth):
     _ = current_user
     return Success(data=product_media_upload_service.create_site_logo_upload_credentials(**payload.model_dump()))
+
+
+@router.post("/logo/delete", summary="删除站点 Logo 文件")
+async def delete_site_logo(payload: SiteConfigLogoDeleteIn, current_user: User = DependAuth):
+    _ = current_user
+    await site_config_controller.delete_logo_file(payload.logo_url)
+    return Success(msg="Deleted Successfully")
 
 
 @router.post("/update", summary="更新站点配置")

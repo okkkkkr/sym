@@ -45,3 +45,12 @@ class SiteConfigUpdate(BaseModel):
 class SiteConfigLogoUploadTokenIn(BaseModel):
     file_name: str = Field(..., min_length=1, description="原始文件名")
     content_type: str = Field(default="", description="文件 MIME 类型")
+
+
+class SiteConfigLogoDeleteIn(BaseModel):
+    logo_url: str = Field(default="", max_length=500, description="待删除的站点 Logo URL")
+
+    @field_validator("logo_url", mode="before")
+    @classmethod
+    def normalize_logo_url(cls, value):
+        return str(value or "").strip()

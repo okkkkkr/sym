@@ -49,11 +49,16 @@ class SiteConfigController(CRUDBase[SiteConfig, SiteConfigUpdate, SiteConfigUpda
             site_config_obj = await self.model.create(**payload)
 
         logo_url = str(site_config_obj.logo_url or "").strip()
-        if previous_logo_url and previous_logo_url != logo_url:
-            object_key = product_media_upload_service.extract_object_key(previous_logo_url)
-            if object_key:
-                await storage_service.delete_file(object_key)
+        await self.delete_logo_file(previous_logo_url, exclude_logo_url=logo_url)
         return site_config_obj
+
+    async def delete_logo_file(self, logo_url: str, exclude_logo_url: str = "") -> None:
+        normalized_logo_url = str(logo_url or "").strip()
+        if not normalized_logo_url or normalized_logo_url == str(exclude_logo_url or "").strip():
+            return
+        if not product_media_upload_service.extract_object_key(normalized_logo_url):
+            return
+        await storage_service.delete_file(normalized_logo_url)
 
 
 site_config_controller = SiteConfigController()

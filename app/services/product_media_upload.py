@@ -8,6 +8,7 @@ import re
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 
@@ -212,6 +213,10 @@ class ProductMediaUploadService:
         public_domain = self._normalize_public_domain()
         if normalized.startswith(public_domain + "/"):
             return normalized[len(public_domain) + 1 :].split("?", 1)[0]
+        parsed_url = urlsplit(normalized)
+        parsed_domain = urlsplit(public_domain)
+        if parsed_url.netloc and parsed_url.netloc == parsed_domain.netloc:
+            return parsed_url.path.lstrip("/").split("?", 1)[0]
         return None
 
     def serialize_stored_url(self, stored_url: str | None, expires_in: int | None = None) -> str:
