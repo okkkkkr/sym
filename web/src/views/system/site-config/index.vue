@@ -16,6 +16,7 @@ const uploadingLogo = ref(false)
 const form = ref(createInitialForm())
 const logoFileList = ref([])
 const initialPayload = ref(JSON.stringify(createInitialPayload()))
+const savedLogoUrl = ref('')
 
 const rules = {
   share_base_url: {
@@ -106,15 +107,16 @@ function normalizeLogoFileList(fileList = []) {
 }
 
 function applySiteConfig(data = {}) {
+  savedLogoUrl.value = data.logo_storage_url || data.logo_url || ''
   form.value = {
-    logo_url: data.logo_storage_url || data.logo_url || '',
+    logo_url: savedLogoUrl.value,
     about_title: data.about_title || '',
     about_text: Array.isArray(data.about_lines) ? data.about_lines.join('\n') : '',
     footer_disclaimer: data.footer_disclaimer || '',
     share_base_url: data.share_base_url || '',
   }
   logoFileList.value = data.logo_url
-    ? [createLogoUploadFile(data.logo_url, data.logo_storage_url || data.logo_url)]
+    ? [createLogoUploadFile(data.logo_url, savedLogoUrl.value)]
     : []
   initialPayload.value = JSON.stringify(buildPayload())
 }
@@ -137,6 +139,18 @@ function syncLogoValue(fileList = []) {
   form.value.logo_url = logoFileList.value[0]?.rawUrl || ''
 }
 
+async function deleteUnusedLogo(logoUrl) {
+  const normalizedLogoUrl = String(logoUrl || '').trim()
+  if (!normalizedLogoUrl || normalizedLogoUrl === savedLogoUrl.value) {
+    return
+  }
+  try {
+    await api.deleteSiteConfigLogo({ logo_url: normalizedLogoUrl })
+  } catch (error) {
+    console.error('删除未使用的 Logo 失败', error)
+  }
+}
+
 async function loadSiteConfig() {
   loading.value = true
   try {
@@ -149,6 +163,7 @@ async function loadSiteConfig() {
 
 async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
   uploadingLogo.value = true
+  const replacedLogoUrl = form.value.logo_url.trim()
   try {
     if (!file?.file) {
       throw new Error('未找到待上传图片')
@@ -190,6 +205,9 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
       file.name = getFileNameFromUrl(file.rawUrl)
     }
     syncLogoValue([file])
+    if (replacedLogoUrl && replacedLogoUrl !== file.rawUrl) {
+      await deleteUnusedLogo(replacedLogoUrl)
+    }
     onFinish()
   } catch (error) {
     syncLogoValue(logoFileList.value)
@@ -203,7 +221,11 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
 }
 
 function handleLogoFileListChange(fileList) {
+  const removedLogoUrl = !fileList.length ? form.value.logo_url.trim() : ''
   syncLogoValue(fileList)
+  if (removedLogoUrl) {
+    deleteUnusedLogo(removedLogoUrl)
+  }
 }
 
 async function handleSave() {
