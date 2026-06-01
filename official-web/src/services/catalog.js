@@ -81,6 +81,7 @@ export async function fetchCatalogProduct(productId) {
 
 const VISITOR_ID_STORAGE_KEY = 'sym-fast:visitor-id'
 const VISIT_TS_STORAGE_KEY = 'sym-fast:last-visit-track-at'
+const CHANNEL_VISIT_TS_STORAGE_KEY_PREFIX = 'sym-fast:last-channel-visit-track-at:'
 const VISIT_THROTTLE_MS = 30 * 60 * 1000
 
 function createVisitorId() {
@@ -208,6 +209,33 @@ export async function reportSiteVisit(path = '') {
     return true
   } catch (error) {
     console.warn('reportSiteVisit error', error)
+    return false
+  }
+}
+
+export async function reportChannelVisit() {
+  const visitorId = getOrCreateVisitorId()
+  const storage = getStorage()
+  if (!visitorId || !storage) {
+    return false
+  }
+
+  const plat = new URLSearchParams(window.location.search).get('plat') || ''
+  const storageKey = `${CHANNEL_VISIT_TS_STORAGE_KEY_PREFIX}${plat || 'nature'}`
+  const lastTrackedAt = Number.parseInt(storage.getItem(storageKey) || '0', 10)
+  if (Number.isFinite(lastTrackedAt) && lastTrackedAt > 0 && Date.now() - lastTrackedAt < VISIT_THROTTLE_MS) {
+    return false
+  }
+
+  try {
+    await postTracking('/api/v1/base/track/channel-visit', {
+      visitor_id: visitorId,
+      plat,
+    })
+    storage.setItem(storageKey, String(Date.now()))
+    return true
+  } catch (error) {
+    console.warn('reportChannelVisit error', error)
     return false
   }
 }

@@ -19,7 +19,7 @@ from app.core.exceptions import (
     ResponseValidationError,
     ResponseValidationHandle,
 )
-from app.models.admin import Api, Menu, Role
+from app.models.admin import Api, Menu, Platform, Role
 from app.schemas.menus import MenuType
 from app.settings.config import settings
 
@@ -73,6 +73,16 @@ async def init_superuser():
                 is_superuser=True,
             )
         )
+
+
+async def init_platforms():
+    await Platform.get_or_create(
+        custom_name="nature",
+        defaults={
+            "platform_name": "自然流量",
+            "click_count": 0,
+        },
+    )
 
 
 async def init_menus():
@@ -306,6 +316,13 @@ async def init_menus():
             "icon": "material-symbols:contact-phone-outline",
             "component": "/system/contact",
         },
+        {
+            "name": "渠道管理",
+            "path": "platform",
+            "order": 13,
+            "icon": "mdi:source-branch",
+            "component": "/system/platform",
+        },
     ]
 
     for item in business_children:
@@ -357,6 +374,13 @@ async def init_menus():
             "order": 4,
             "icon": "mdi:bullhorn-outline",
             "component": "/data/banner-click",
+        },
+        {
+            "name": "渠道访问量",
+            "path": "channel-visit",
+            "order": 5,
+            "icon": "carbon:chart-relationship",
+            "component": "/data/channel-visit",
         },
     ]
 
@@ -468,6 +492,7 @@ async def init_roles():
 async def init_data():
     await init_db()
     await init_superuser()
+    await init_platforms()
     await init_menus()
     await init_apis()
     await init_roles()

@@ -100,6 +100,35 @@ class SiteVisit(BaseModel):
         table = "site_visit"
 
 
+class Platform(BaseModel, TimestampMixin):
+    platform_name = fields.CharField(max_length=100, description="渠道名称", index=True)
+    custom_name = fields.CharField(max_length=50, unique=True, description="自定义标识", index=True)
+    click_count = fields.IntField(default=0, description="渠道访问量", index=True)
+
+    class Meta:
+        table = "platform"
+
+
+class ChannelVisit(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    platform_name_snapshot = fields.CharField(max_length=100, description="渠道名称快照")
+    custom_name = fields.CharField(max_length=50, description="自定义标识", index=True)
+    visited_at = fields.DatetimeField(auto_now_add=True, description="访问时间", index=True)
+
+    class Meta:
+        table = "channel_visit"
+
+
+class ChannelVisitDedup(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    custom_name = fields.CharField(max_length=50, description="自定义标识", index=True)
+    last_counted_at = fields.DatetimeField(description="最后计数时间", index=True)
+
+    class Meta:
+        table = "channel_visit_dedup"
+        unique_together = (("visitor_id", "custom_name"),)
+
+
 class Category(BaseModel, TimestampMixin):
     name = fields.CharField(max_length=50, unique=True, description="类目名称", index=True)
     desc = fields.CharField(max_length=255, null=True, description="类目描述")

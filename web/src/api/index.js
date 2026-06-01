@@ -140,6 +140,12 @@ export default {
   createContact: (data = {}) => request.post('/contact/create', data),
   updateContact: (data = {}) => request.post('/contact/update', data),
   deleteContact: (params = {}) => request.delete('/contact/delete', { params }),
+  // platforms
+  getPlatformList: (params = {}) => request.get('/platform/list', { params }),
+  getPlatformById: (params = {}) => request.get('/platform/get', { params }),
+  createPlatform: (data = {}) => request.post('/platform/create', data),
+  updatePlatform: (data = {}) => request.post('/platform/update', data),
+  deletePlatform: (params = {}) => request.delete('/platform/delete', { params }),
   getActiveBanners: (params = {}) => request.get('/base/banners', { params, noNeedToken: true }),
   getActiveContacts: (params = {}) => request.get('/base/contacts', { params, noNeedToken: true }),
   // products
@@ -180,4 +186,5 @@ export default {
   getProductClickStatsList: (params = {}) => request.get('/stats/product-click/list', { params }),
   getBrandSearchStatsList: (params = {}) => request.get('/stats/brand-search/list', { params }),
   getBannerClickStatsList: (params = {}) => request.get('/stats/banner-click/list', { params }),
+  getChannelVisitStatsList: (params = {}) => request.get('/stats/channel-visit/list', { params }),
 }

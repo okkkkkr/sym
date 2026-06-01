@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from tortoise.expressions import F, Q
+from tortoise.transactions import in_transaction
 
 from app.controllers.brand import brand_controller
 from app.controllers.banner import banner_controller
@@ -13,10 +14,25 @@ from app.controllers.product import product_controller
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
-from app.models.admin import Api, AuditLog, Banner, Brand, Category, Contact, Menu, Product, Role, SiteVisit, User
+from app.models.admin import (
+    Api,
+    AuditLog,
+    Banner,
+    Brand,
+    Category,
+    ChannelVisit,
+    ChannelVisitDedup,
+    Contact,
+    Menu,
+    Platform,
+    Product,
+    Role,
+    SiteVisit,
+    User,
+)
 from app.schemas.base import Fail, Success
 from app.schemas.login import *
-from app.schemas.stats import TrackBrandSearchIn, TrackProductClickIn, TrackSiteVisitIn
+from app.schemas.stats import TrackBrandSearchIn, TrackChannelVisitIn, TrackProductClickIn, TrackSiteVisitIn
 from app.services.product_media_upload import product_media_upload_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
@@ -27,6 +43,8 @@ router = APIRouter()
 
 
 CATEGORY_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
+CHANNEL_VISIT_WINDOW = timedelta(minutes=30)
+NATURE_CUSTOM_NAME = "nature"
 
 
 @router.post("/access_token", summary="获取token")
@@ -279,6 +297,51 @@ async def track_site_visit(payload: TrackSiteVisitIn, request: Request):
         data={
             "tracked": True,
             "visit_id": visit_obj.id,
+            "visited_at": visit_obj.visited_at.strftime(settings.DATETIME_FORMAT),
+        }
+    )
+
+
+@router.post("/track/channel-visit", summary="上报前台渠道访问")
+async def track_channel_visit(payload: TrackChannelVisitIn):
+    platform_obj = None
+    if payload.plat and payload.plat != "undefined":
+        platform_obj = await Platform.filter(custom_name=payload.plat).first()
+    if not platform_obj:
+        platform_obj = await Platform.get(custom_name=NATURE_CUSTOM_NAME)
+
+    now = datetime.now(timezone.utc)
+    async with in_transaction() as connection:
+        dedup_obj = await ChannelVisitDedup.filter(
+            visitor_id=payload.visitor_id,
+            custom_name=platform_obj.custom_name,
+        ).using_db(connection).select_for_update().first()
+        if dedup_obj and now - dedup_obj.last_counted_at < CHANNEL_VISIT_WINDOW:
+            return Success(data={"tracked": False, "custom_name": platform_obj.custom_name})
+
+        if dedup_obj:
+            dedup_obj.last_counted_at = now
+            await dedup_obj.save(using_db=connection, update_fields=["last_counted_at"])
+        else:
+            await ChannelVisitDedup.create(
+                visitor_id=payload.visitor_id,
+                custom_name=platform_obj.custom_name,
+                last_counted_at=now,
+                using_db=connection,
+            )
+        visit_obj = await ChannelVisit.create(
+            visitor_id=payload.visitor_id,
+            platform_name_snapshot=platform_obj.platform_name,
+            custom_name=platform_obj.custom_name,
+            using_db=connection,
+        )
+        await Platform.filter(id=platform_obj.id).using_db(connection).update(click_count=F("click_count") + 1)
+
+    return Success(
+        data={
+            "tracked": True,
+            "visit_id": visit_obj.id,
+            "custom_name": platform_obj.custom_name,
             "visited_at": visit_obj.visited_at.strftime(settings.DATETIME_FORMAT),
         }
     )

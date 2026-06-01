@@ -1,10 +1,11 @@
 <script setup>
 import { onMounted } from 'vue'
 
-import { reportSiteVisit } from './services/catalog'
+import { reportChannelVisit, reportSiteVisit } from './services/catalog'
 
 onMounted(() => {
   reportSiteVisit()
+  reportChannelVisit()
 })
 </script>
 

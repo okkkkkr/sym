@@ -7,7 +7,9 @@ from app.controllers.banner import banner_controller
 from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.product import product_controller
-from app.models.admin import SiteVisit
+from tortoise.functions import Count
+
+from app.models.admin import ChannelVisit, Platform, SiteVisit
 from app.schemas.base import SuccessExtra
 
 router = APIRouter()
@@ -20,6 +22,54 @@ async def serialize_brand_stats_payload(brand_obj):
     item["category_ids"] = [category["id"] for category in categories]
     item["category"] = categories[0] if categories else None
     return item
+
+
+@router.get("/channel-visit/list", summary="查看渠道访问量数据")
+async def list_channel_visit_stats(
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量"),
+    keyword: str = Query("", description="渠道名称或自定义标识"),
+    sort_field: str | None = Query(None, description="排序字段"),
+    sort_order: str | None = Query(None, description="排序方向 asc/desc"),
+):
+    platform_objs = await Platform.all()
+    platform_map = {item.custom_name: item for item in platform_objs}
+    count_rows = await ChannelVisit.all().group_by("custom_name").annotate(click_count=Count("id")).values(
+        "custom_name", "click_count"
+    )
+    snapshot_rows = await ChannelVisit.all().order_by("-visited_at", "-id").values(
+        "custom_name", "platform_name_snapshot"
+    )
+    snapshot_map = {}
+    for item in snapshot_rows:
+        snapshot_map.setdefault(item["custom_name"], item["platform_name_snapshot"])
+
+    count_map = {item["custom_name"]: item["click_count"] for item in count_rows}
+    custom_names = set(platform_map) | set(count_map)
+    data = []
+    for custom_name in custom_names:
+        platform_obj = platform_map.get(custom_name)
+        platform_name = platform_obj.platform_name if platform_obj else snapshot_map.get(custom_name, custom_name)
+        if keyword and keyword not in platform_name and keyword not in custom_name:
+            continue
+        data.append(
+            {
+                "id": platform_obj.id if platform_obj else f"deleted-{custom_name}",
+                "platform_name": platform_name,
+                "custom_name": custom_name,
+                "click_count": count_map.get(custom_name, 0),
+                "status": "active" if platform_obj else "deleted",
+            }
+        )
+
+    reverse = sort_order != "asc"
+    if sort_field in {"platform_name", "custom_name"}:
+        data.sort(key=lambda item: item[sort_field], reverse=reverse)
+    else:
+        data.sort(key=lambda item: (item["click_count"], item["custom_name"]), reverse=reverse)
+    total = len(data)
+    offset = (page - 1) * page_size
+    return SuccessExtra(data=data[offset : offset + page_size], total=total, page=page, page_size=page_size)
 
 
 @router.get("/site-visit/list", summary="查看访问量数据")
