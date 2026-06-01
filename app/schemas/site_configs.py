@@ -40,3 +40,8 @@ class SiteConfigUpdate(BaseModel):
         if not isinstance(value, list):
             raise ValueError("about_lines 必须是字符串数组")
         return [str(item).strip() for item in value if str(item).strip()]
+
+
+class SiteConfigLogoUploadTokenIn(BaseModel):
+    file_name: str = Field(..., min_length=1, description="原始文件名")
+    content_type: str = Field(default="", description="文件 MIME 类型")

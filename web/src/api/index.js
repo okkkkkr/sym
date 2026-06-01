@@ -148,6 +148,7 @@ export default {
   deletePlatform: (params = {}) => request.delete('/platform/delete', { params }),
   // site config
   getSiteConfig: () => request.get('/site-config/get'),
+  getSiteConfigLogoUploadToken: (data = {}) => request.post('/site-config/logo/upload-token', data),
   updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getActiveBanners: (params = {}) => request.get('/base/banners', { params, noNeedToken: true }),
   getActiveContacts: (params = {}) => request.get('/base/contacts', { params, noNeedToken: true }),

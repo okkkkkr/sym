@@ -34,6 +34,12 @@ QINIU_REGION_UPLOAD_HOSTS = {
 }
 
 PRODUCT_MEDIA_TYPE_RULES = {
+    "logo": {
+        "prefix": "logo",
+        "file_prefix": "logo",
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "mime_prefix": "image/",
+    },
     "cover": {
         "prefix": "items/images",
         "file_prefix": "img",
@@ -228,6 +234,9 @@ class ProductMediaUploadService:
             "preview_url": self.serialize_stored_url(stored_url),
             "media_type": media_type,
         }
+
+    def create_site_logo_upload_credentials(self, file_name: str, content_type: str | None = None) -> dict:
+        return self.create_upload_credentials(file_name=file_name, media_type="logo", content_type=content_type)
 
 
 product_media_upload_service = ProductMediaUploadService()

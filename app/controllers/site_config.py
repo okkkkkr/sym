@@ -1,25 +1,34 @@
 from app.core.crud import CRUDBase
 from app.models.admin import SiteConfig
 from app.schemas.site_configs import SiteConfigUpdate
+from app.services.product_media_upload import product_media_upload_service
+from app.services.storage import storage_service
 
 
-def serialize_site_config(site_config_obj: SiteConfig | None) -> dict:
+def serialize_site_config(site_config_obj: SiteConfig | None, include_storage: bool = False) -> dict:
     if not site_config_obj:
-        return {
+        data = {
             "logo_url": "",
             "about_title": "",
             "about_lines": [],
             "footer_disclaimer": "",
             "share_base_url": "",
         }
+        if include_storage:
+            data["logo_storage_url"] = ""
+        return data
 
-    return {
-        "logo_url": str(site_config_obj.logo_url or "").strip(),
+    logo_storage_url = str(site_config_obj.logo_url or "").strip()
+    data = {
+        "logo_url": product_media_upload_service.serialize_stored_url(logo_storage_url),
         "about_title": str(site_config_obj.about_title or "").strip(),
         "about_lines": [str(item).strip() for item in site_config_obj.about_lines or [] if str(item).strip()],
         "footer_disclaimer": str(site_config_obj.footer_disclaimer or "").strip(),
         "share_base_url": str(site_config_obj.share_base_url or "").strip(),
     }
+    if include_storage:
+        data["logo_storage_url"] = logo_storage_url
+    return data
 
 
 class SiteConfigController(CRUDBase[SiteConfig, SiteConfigUpdate, SiteConfigUpdate]):
@@ -32,11 +41,19 @@ class SiteConfigController(CRUDBase[SiteConfig, SiteConfigUpdate, SiteConfigUpda
     async def update_singleton(self, obj_in: SiteConfigUpdate) -> SiteConfig:
         site_config_obj = await self.get_singleton()
         payload = obj_in.model_dump()
+        previous_logo_url = str(site_config_obj.logo_url or "").strip() if site_config_obj else ""
         if site_config_obj:
             site_config_obj.update_from_dict(payload)
             await site_config_obj.save()
-            return site_config_obj
-        return await self.model.create(**payload)
+        else:
+            site_config_obj = await self.model.create(**payload)
+
+        logo_url = str(site_config_obj.logo_url or "").strip()
+        if previous_logo_url and previous_logo_url != logo_url:
+            object_key = product_media_upload_service.extract_object_key(previous_logo_url)
+            if object_key:
+                await storage_service.delete_file(object_key)
+        return site_config_obj
 
 
 site_config_controller = SiteConfigController()
