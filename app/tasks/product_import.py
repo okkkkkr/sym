@@ -72,7 +72,7 @@ async def generate_error_report(task_id: int) -> str | None:
     items = await product_import_task_item_controller.model.filter(task_id=task_id).order_by("row_no", "id")
     error_rows = []
     for item in items:
-        if item.status == ProductImportTaskItemStatus.SUCCESS:
+        if item.status != ProductImportTaskItemStatus.FAILED:
             continue
         error_rows.append(
             [
@@ -212,7 +212,8 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
     invalid_rows = 0
 
     try:
-        await product_import_task_controller.mark_running(task_id)
+        if (await product_import_task_controller.mark_running(task_id)).status == ProductImportTaskStatus.CANCELED:
+            return
 
         product_import_zip_service.validate_zip(zip_path)
         extract_dir = product_import_zip_service.extract_to_temp(zip_path, task_id)
@@ -281,6 +282,11 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             try:
                 image_uploads = await upload_media_files(row.name, material_set.images, "image")
                 video_uploads = await upload_media_files(row.name, material_set.videos, "video")
+                if (await product_import_task_controller.get(id=task_id)).status == ProductImportTaskStatus.CANCELED:
+                    canceled = True
+                    processed_count += 1
+                    await product_import_task_item_controller.mark_skipped(item.id, message="任务已由用户取消")
+                    break
                 image_urls = [item["url"] for item in image_uploads]
                 video_urls = [item["url"] for item in video_uploads]
                 cover_image_url = next(

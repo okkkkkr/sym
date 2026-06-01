@@ -427,12 +427,14 @@ def normalize_detail_text(detail_description):
 
 def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
     detail_text = normalize_detail_text(product_dict.get("detail_description"))
+    detail_description = product_dict.get("detail_description")
     return {
         "id": str(product_dict["id"]),
         "name": product_dict["name"],
         "productCode": product_dict.get("product_code") or "",
         "description": product_dict.get("desc") or detail_text,
         "detailDescription": detail_text or product_dict.get("desc") or "",
+        "detailBlocks": detail_description if isinstance(detail_description, list) else [],
         "category": category_key,
         "brandName": brand_name,
         "coverImageUrl": product_media_upload_service.serialize_stored_url(product_dict.get("cover_image_url")),

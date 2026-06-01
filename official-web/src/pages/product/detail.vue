@@ -16,6 +16,11 @@ const brandName = ref('')
 const categoryLabelText = ref('')
 
 const categoryLabel = computed(() => String(categoryLabelText.value || '').trim())
+const detailBlocks = computed(() =>
+  Array.isArray(product.value?.detailBlocks)
+    ? product.value.detailBlocks.filter((item) => item && typeof item === 'object')
+    : []
+)
 
 const gallery = computed(() => {
   if (!product.value) {
@@ -212,6 +217,25 @@ watch(() => route.params.productId, () => {
           </p>
         </div>
       </aside>
+    </section>
+
+    <section v-if="detailBlocks.length" class="product-detail__blocks page-container">
+      <div
+        v-for="(block, index) in detailBlocks"
+        :key="`${product.id}-detail-${index}`"
+        class="product-detail__block"
+      >
+        <h2 v-if="block.title" class="product-detail__block-title">{{ block.title }}</h2>
+        <p v-if="block.type !== 'image' && block.content" class="product-detail__block-text">
+          {{ block.content }}
+        </p>
+        <img
+          v-if="block.type === 'image' && block.url"
+          :src="block.url"
+          :alt="block.title || product.name"
+          class="product-detail__block-image"
+        />
+      </div>
     </section>
 
     <section
@@ -444,6 +468,39 @@ watch(() => route.params.productId, () => {
 
 .product-detail__meta a {
   font-weight: 700;
+}
+
+.product-detail__blocks {
+  display: grid;
+  gap: 20px;
+  padding: 40px 24px 0;
+}
+
+.product-detail__block {
+  border-top: 1px solid rgba(17, 17, 17, 0.12);
+  padding-top: 20px;
+}
+
+.product-detail__block-title {
+  margin: 0 0 12px;
+  color: #111111;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.product-detail__block-text {
+  margin: 0;
+  color: #3e3e3e;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.product-detail__block-image {
+  display: block;
+  width: min(100%, 720px);
+  border-radius: 20px;
+  object-fit: cover;
 }
 
 .product-detail__empty {

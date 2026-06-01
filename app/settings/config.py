@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     QINIU_REGION: str = ""
     QINIU_IS_PRIVATE: bool = False
     QINIU_URL_EXPIRE_SECONDS: int = 3600
+    QINIU_UPLOAD_TIMEOUT_SECONDS: int = 300
     PUBLIC_SITE_URL: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"

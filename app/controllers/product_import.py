@@ -32,6 +32,9 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         return await self.update(id=task_id, obj_in={"status": ProductImportTaskStatus.QUEUED})
 
     async def mark_running(self, task_id: int) -> ProductImportTask:
+        task = await self.get(id=task_id)
+        if task.status == ProductImportTaskStatus.CANCELED:
+            return task
         return await self.update(
             id=task_id,
             obj_in={
@@ -62,7 +65,7 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
             "failed_count": failed_count if failed_count is not None else task.failed_count,
             "progress": 0 if not next_total else min(100, int((next_processed / next_total) * 100)),
         }
-        if status is not None:
+        if status is not None and task.status != ProductImportTaskStatus.CANCELED:
             payload["status"] = status
         if result_summary is not None:
             payload["result_summary"] = result_summary
@@ -81,6 +84,9 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         error_message: str | None = None,
         error_report_path: str | None = None,
     ) -> ProductImportTask:
+        task = await self.get(id=task_id)
+        if task.status == ProductImportTaskStatus.CANCELED:
+            return task
         if failed_count <= 0:
             status = ProductImportTaskStatus.SUCCESS
         elif success_count > 0:
