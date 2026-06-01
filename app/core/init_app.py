@@ -1,5 +1,3 @@
-import shutil
-
 from aerich import Command
 from fastapi import FastAPI
 from fastapi.middleware import Middleware
@@ -21,7 +19,6 @@ from app.core.exceptions import (
     ResponseValidationError,
     ResponseValidationHandle,
 )
-from app.log import logger
 from app.models.admin import Api, Menu, Role
 from app.schemas.menus import MenuType
 from app.settings.config import settings

@@ -1,14 +1,53 @@
+from io import BytesIO
+
 from fastapi import HTTPException
+from openpyxl import Workbook
 from tortoise.transactions import atomic
 
 from app.core.crud import CRUDBase
 from app.models.admin import Brand, Category, Product, Tag
-from app.schemas.categories import CategoryCreate, CategoryInheritResult, CategoryUpdate
+from app.schemas.categories import CategoryCreate, CategoryImportItem, CategoryInheritResult, CategoryUpdate
 
 
 class CategoryController(CRUDBase[Category, CategoryCreate, CategoryUpdate]):
     def __init__(self):
         super().__init__(model=Category)
+
+    async def ensure_name_unique(self, name: str, exclude_id: int | None = None):
+        query = self.model.filter(name=name)
+        if exclude_id is not None:
+            query = query.exclude(id=exclude_id)
+        if await query.exists():
+            raise HTTPException(status_code=400, detail="分类名称已存在")
+
+    async def create(self, obj_in: CategoryCreate):
+        name = obj_in.get("name") if isinstance(obj_in, dict) else obj_in.name
+        await self.ensure_name_unique(name)
+        return await super().create(obj_in=obj_in)
+
+    async def update(self, id: int, obj_in: CategoryUpdate):
+        name = obj_in.get("name") if isinstance(obj_in, dict) else obj_in.name
+        await self.ensure_name_unique(name, exclude_id=id)
+        return await super().update(id=id, obj_in=obj_in)
+
+    async def build_import_template(self) -> bytes:
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "分类导入模板"
+        worksheet.append(["分类名称", "分类描述", "排序", "是否启用"])
+        worksheet.append(["示例分类", "这是一条示例分类描述", 0, "是"])
+
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return buffer.getvalue()
+
+    async def import_items(self, items: list[CategoryImportItem]):
+        created = 0
+        for item in items:
+            await self.ensure_name_unique(item.name)
+            await super().create(obj_in=item.model_dump())
+            created += 1
+        return created
 
     @atomic()
     async def inherit_content(self, source_id: int, target_id: int) -> CategoryInheritResult:

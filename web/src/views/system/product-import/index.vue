@@ -22,7 +22,7 @@ const pauseRequested = ref(false)
 const uploadAbortController = ref(null)
 
 const chunkSize = 5 * 1024 * 1024
-const maxFileSize = 500 * 1024 * 1024
+const maxFileSize = 1024 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
 
 const selectedFileLabel = computed(() => {
@@ -42,7 +42,9 @@ const uploadProgressStatus = computed(() => (uploadPercent.value >= 100 ? 'succe
 const canTogglePause = computed(() => {
   if (!selectedFile.value) return false
   if (uploadLoading.value) return true
-  return Boolean(activeUploadSession.value?.upload_id && activeUploadSession.value?.uploaded_chunks?.length)
+  return Boolean(
+    activeUploadSession.value?.upload_id && activeUploadSession.value?.uploaded_chunks?.length
+  )
 })
 
 function formatFileSize(size) {
@@ -152,7 +154,7 @@ async function handleFileChange(event) {
     return
   }
   if (file.size > maxFileSize) {
-    $message.error('文件大小不能超过 500MB')
+    $message.error('文件大小不能超过 1GB')
     event.target.value = ''
     return
   }
@@ -237,7 +239,9 @@ async function startUpload() {
       const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 1)
       const bytesPerSecond = uploadedBytes / elapsedSeconds
       uploadSpeedText.value = formatUploadSpeed(bytesPerSecond)
-      uploadEtaText.value = formatRemainingTime((selectedFile.value.size - uploadedBytes) / bytesPerSecond)
+      uploadEtaText.value = formatRemainingTime(
+        (selectedFile.value.size - uploadedBytes) / bytesPerSecond
+      )
       uploadStatusText.value = `正在上传第 ${chunkIndex + 1}/${totalChunks} 个分片`
       updateUploadProgress(uploadedChunkSet.size, totalChunks)
     }
@@ -245,17 +249,19 @@ async function startUpload() {
     await api.completeProductImportUpload({ upload_id: session.upload_id })
     const taskRes = await api.getProductImportTask({ task_id: session.task_id })
     latestTask.value = taskRes.data
-    uploadStatusText.value = '上传完成，导入任务已进入队列'
+    uploadStatusText.value = 'ZIP 上传成功，导入任务已进入队列'
     uploadSpeedText.value = ''
     uploadEtaText.value = ''
     clearCachedSession(selectedFile.value)
     activeUploadSession.value = null
-    $message.success('导入任务已创建并进入队列')
+    $message.success('ZIP 上传成功，导入任务已进入队列')
     router.push(`/batch/product-import-task?task_id=${session.task_id}`)
   } catch (error) {
     uploadAbortController.value = null
     if (error.code === 'ERR_CANCELED' && pauseRequested.value) {
-      uploadStatusText.value = `上传已暂停，当前已完成 ${activeUploadSession.value?.uploaded_chunks?.length || 0}/${totalChunks} 个分片`
+      uploadStatusText.value = `上传已暂停，当前已完成 ${
+        activeUploadSession.value?.uploaded_chunks?.length || 0
+      }/${totalChunks} 个分片`
       uploadSpeedText.value = ''
       uploadEtaText.value = ''
       return
@@ -312,8 +318,8 @@ function goToTaskCenter() {
 
     <NSpace vertical :size="16">
       <NAlert type="info" :show-icon="false">
-        支持上传不超过 500MB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含 product.xlsx，素材目录名需与 Excel 中的
-        name 精确一致。
+        支持上传不超过 1GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
+        product.xlsx，素材目录名需与 Excel 中的 name 精确一致。
       </NAlert>
 
       <NCard title="上传 ZIP 包" size="small">

@@ -2,10 +2,12 @@ import os
 import typing
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     VERSION: str = "0.1.0"
     APP_TITLE: str = "SYM Admin"
     PROJECT_NAME: str = "SYM Admin"
@@ -32,16 +34,23 @@ class Settings(BaseSettings):
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
-    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 500 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     PRODUCT_IMPORT_CHUNK_SIZE: int = 5 * 1024 * 1024
     PRODUCT_IMPORT_MAX_CONCURRENCY: int = 2
     PRODUCT_IMPORT_MAX_WORKERS: int = 4
-    STORAGE_PROVIDER: str = "local"
+    PRODUCT_IMPORT_CLEANUP_ENABLED: bool = True
+    PRODUCT_IMPORT_CLEANUP_RETENTION_HOURS: int = 24
+    PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS: int = 3600
+    STORAGE_PROVIDER: str = "qiniu"
     QINIU_ACCESS_KEY: str = ""
     QINIU_SECRET_KEY: str = ""
     QINIU_BUCKET: str = ""
     QINIU_DOMAIN: str = ""
+    QINIU_DOMAIN_SCHEME: str = "https"
+    QINIU_REGION: str = ""
+    QINIU_IS_PRIVATE: bool = False
+    QINIU_URL_EXPIRE_SECONDS: int = 3600
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"

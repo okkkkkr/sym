@@ -3,6 +3,7 @@ import os
 import socket
 from collections import Counter
 from base64 import b64decode
+from datetime import datetime
 from io import BytesIO
 from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -19,7 +20,7 @@ from app.models import User
 from app.models.enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductImportTaskStatus
 from app.schemas.base import Success, SuccessExtra
 from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
-from app.services import product_import_upload_service, storage_service
+from app.services import artifact_storage_service, product_import_upload_service
 from app.settings import settings
 from app.tasks.product_import import run_product_import, run_product_import_task
 from app.utils.excel_export import build_xlsx_content
@@ -213,18 +214,30 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
     task_id = int(merged_meta["task_id"])
     merged_file_path = merged_meta["merged_file_path"]
-    storage_key = await storage_service.upload_file(
-        merged_file_path,
-        f"product-import/raw/{task_id}/source.zip",
-    )
-    await product_import_task_controller.update(
-        id=task_id,
-        obj_in={
-            "storage_key": storage_key,
-            "status": ProductImportTaskStatus.QUEUED,
-        },
-    )
-    await product_import_upload_service.cleanup_upload(payload.upload_id)
+    try:
+        storage_key = await artifact_storage_service.upload_file(
+            merged_file_path,
+            f"product-import/raw/{task_id}/source.zip",
+        )
+        await product_import_task_controller.update(
+            id=task_id,
+            obj_in={
+                "storage_key": storage_key,
+                "status": ProductImportTaskStatus.QUEUED,
+            },
+        )
+    except Exception as exc:
+        await product_import_task_controller.update(
+            id=task_id,
+            obj_in={
+                "status": ProductImportTaskStatus.FAILED,
+                "error_message": f"上传文件入库失败：{exc}",
+                "finished_at": datetime.now(),
+            },
+        )
+        raise
+    finally:
+        await product_import_upload_service.cleanup_upload(payload.upload_id)
     dispatch_product_import_task(task_id)
     return Success(
         data={
@@ -245,7 +258,7 @@ def build_task_search(status: str | None, current_user: User) -> Q:
 
 
 def resolve_task_source_path(storage_key: str) -> str | None:
-    stored_path = storage_service.resolve_stored_path(storage_key)
+    stored_path = artifact_storage_service.resolve_stored_path(storage_key)
     if stored_path and os.path.exists(stored_path):
         return stored_path
     if os.path.isabs(storage_key) and os.path.exists(storage_key):
@@ -452,7 +465,7 @@ async def download_product_import_task_errors(
     if not task.error_report_path:
         raise HTTPException(status_code=404, detail="未找到错误报告")
 
-    local_path = storage_service.resolve_stored_path(task.error_report_path)
+    local_path = artifact_storage_service.resolve_stored_path(task.error_report_path)
     if local_path and os.path.exists(local_path):
         filename = f"product-import-errors-{task_id}.xlsx"
         return StreamingResponse(

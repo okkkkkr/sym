@@ -1,19 +1,24 @@
 import asyncio
+from io import BytesIO
+from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
+from openpyxl import load_workbook
 from tortoise.expressions import Q
 
 from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.tag import tag_controller
 from app.models.admin import Product
-from fastapi.responses import StreamingResponse
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
-from app.schemas.categories import CategoryCreate, CategoryHotConfigUpdate, CategoryInheritIn, CategoryUpdate
+from app.schemas.categories import CategoryCreate, CategoryHotConfigUpdate, CategoryImportItem, CategoryInheritIn, CategoryUpdate
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter()
+
+TEMPLATE_HEADERS = ["分类名称", "分类描述", "排序", "是否启用"]
 
 
 async def serialize_category_payload(category_obj):
@@ -22,7 +27,7 @@ async def serialize_category_payload(category_obj):
     return item
 
 
-def parse_optional_bool(value) -> bool | None:
+def parse_optional_bool(value: Any) -> bool | None:
     if value in (None, "", "all"):
         return None
     if isinstance(value, bool):
@@ -49,6 +54,13 @@ def build_category_search(name: str = "", is_active=None) -> tuple[Q, bool]:
         has_filters = True
 
     return q, has_filters
+
+
+def normalize_import_bool(value: Any, row_index: int) -> bool:
+    normalized = str(value or "true").strip().lower()
+    if normalized not in {"true", "false", "1", "0", "是", "否"}:
+        raise HTTPException(status_code=400, detail=f"第 {row_index} 行是否启用值不合法")
+    return normalized in {"true", "1", "是"}
 
 
 async def resolve_category_ids(payload: DeleteIdsIn) -> list[int]:
@@ -149,6 +161,76 @@ async def export_category(payload: DeleteIdsIn = Body(...)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/template", summary="下载分类导入模板")
+async def download_category_template():
+    content = await category_controller.build_import_template()
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="category-import-template.xlsx"'},
+    )
+
+
+@router.post("/import", summary="批量导入分类")
+async def import_categories(file: UploadFile = File(..., description="XLSX模板文件")):
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="仅支持 XLSX 模板导入")
+
+    content = await file.read()
+    try:
+        workbook = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="文件解析失败，请使用模板文件导入") from exc
+
+    worksheet = workbook.active
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="导入文件为空")
+
+    header = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
+    if header[: len(TEMPLATE_HEADERS)] != TEMPLATE_HEADERS:
+        raise HTTPException(status_code=400, detail="模板表头不正确，请重新下载模板")
+
+    grouped_items: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(rows[1:], start=2):
+        row_map = {
+            TEMPLATE_HEADERS[position]: row[position] if position < len(row) else None
+            for position in range(len(TEMPLATE_HEADERS))
+        }
+        if all(value in (None, "") for value in row_map.values()):
+            continue
+
+        name = str(row_map.get("分类名称") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行分类名称不能为空")
+
+        try:
+            order = int(row_map.get("排序") or 0)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行排序值不合法") from exc
+
+        normalized_item = {
+            "name": name,
+            "desc": str(row_map.get("分类描述") or "").strip() or None,
+            "order": order,
+            "is_active": normalize_import_bool(row_map.get("是否启用"), index),
+        }
+
+        existing_item = grouped_items.get(name)
+        if existing_item is None:
+            grouped_items[name] = normalized_item
+            continue
+
+        comparable_existing = {key: existing_item[key] for key in ["desc", "order", "is_active"]}
+        comparable_current = {key: normalized_item[key] for key in ["desc", "order", "is_active"]}
+        if comparable_existing != comparable_current:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行与分类 {name} 的其他字段不一致")
+
+    items = [CategoryImportItem(**item) for item in grouped_items.values()]
+    created = await category_controller.import_items(items)
+    return Success(msg="Imported Successfully", data={"created": created})
 
 
 @router.get("/hot-config", summary="查看类目热门配置")

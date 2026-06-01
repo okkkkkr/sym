@@ -5,6 +5,9 @@ venv/
 .vscode
 .ruff_cache/
 .pytest_cache/
+.env
+.env.*
+!.env.example
 migrations/
 !migrations/
 !migrations/models/

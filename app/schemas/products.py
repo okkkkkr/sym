@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ class ProductTagOut(BaseModel):
 class BaseProduct(BaseModel):
     category_id: int = Field(..., description="类目ID")
     brand_id: int = Field(..., description="品牌ID")
+    tag_ids: list[int] = Field(default_factory=list, description="标签ID列表")
     name: str = Field(..., description="好物名称")
     product_code_custom: Optional[str] = Field(None, description="好物识别码自定义数字")
     desc: Optional[str] = Field(None, description="好物简介")
@@ -36,3 +37,9 @@ class ProductOut(BaseProduct):
     tags: list[ProductTagOut] = Field(default_factory=list, description="标签列表")
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class ProductMediaUploadTokenIn(BaseModel):
+    file_name: str = Field(..., min_length=1, description="原始文件名")
+    media_type: Literal["cover", "image", "video"] = Field(..., description="媒体类型")
+    content_type: Optional[str] = Field(None, description="文件 MIME 类型")

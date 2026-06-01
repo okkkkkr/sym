@@ -43,7 +43,6 @@ const DEFAULT_DETAIL_DESCRIPTION = JSON.stringify(
   2
 )
 
-const PRODUCT_UPLOAD_ACTION = import.meta.env.VITE_UPLOAD_ACTION
 let uploadFileSeed = 0
 
 const $table = ref(null)
@@ -204,43 +203,19 @@ function decorateUploadFile(file, prefix = 'file') {
   return normalizedFile
 }
 
-function createUploadFile(url, prefix = 'file') {
+function createUploadFile(url, prefix = 'file', rawUrl = url) {
   if (!url) return null
   return decorateUploadFile({
     id: nextUploadFileId(prefix),
     name: getFileNameFromUrl(url, prefix),
     status: 'finished',
     url,
+    rawUrl,
   }, prefix)
 }
 
-function buildPresetUploadList(urls = [], prefix = 'file') {
-  return urls.map((url) => createUploadFile(url, prefix)).filter(Boolean)
-}
-
-function extractResponsePayload(event) {
-  const rawResponse = event?.target?.response ?? event?.currentTarget?.response
-  if (!rawResponse) return null
-  if (typeof rawResponse === 'string') {
-    try {
-      return JSON.parse(rawResponse)
-    } catch {
-      return null
-    }
-  }
-  return rawResponse
-}
-
-function resolveUploadedFileUrl(file, event) {
-  const responsePayload = extractResponsePayload(event)
-  return (
-    responsePayload?.data?.url ||
-    responsePayload?.url ||
-    responsePayload?.data?.link ||
-    file.url ||
-    file.thumbnailUrl ||
-    (file.file ? URL.createObjectURL(file.file) : '')
-  )
+function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
+  return urls.map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url)).filter(Boolean)
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
@@ -255,38 +230,84 @@ function normalizeUploadFileList(fileList = [], prefix = 'file') {
 
 function buildUploadUrls(fileList = []) {
   return normalizeUploadFileList(fileList)
-    .map((item) => String(item.url || item.thumbnailUrl || '').trim())
+    .filter((item) => !item?.status || item.status === 'finished')
+    .map((item) => String(item.rawUrl || item.url || item.thumbnailUrl || '').trim())
+    .filter((url) => !url.startsWith('blob:'))
     .filter(Boolean)
 }
 
-function finalizeUploadedFile(file, event, prefix = 'file') {
-  const resolvedUrl = resolveUploadedFileUrl(file, event)
-  if (resolvedUrl) {
-    file.url = resolvedUrl
+function syncUploadField(fieldName, prefix) {
+  modalForm.value[fieldName] = normalizeUploadFileList(modalForm.value[fieldName], prefix)
+}
+
+function applyUploadedFile(fieldName, prefix, file, url) {
+  if (url) {
+    file.url = url
   }
+  if (url && isImageUploadPrefix(prefix)) {
+    file.thumbnailUrl = url
+  }
+  file.rawUrl = url
   if (!file.name) {
-    file.name = getFileNameFromUrl(resolvedUrl, prefix)
+    file.name = getFileNameFromUrl(url, prefix)
   }
-  return Object.assign(file, decorateUploadFile(file, prefix))
+  Object.assign(file, decorateUploadFile(file, prefix))
+  syncUploadField(fieldName, prefix)
 }
 
-function handleCoverUploadFinish({ file, event }) {
-  finalizeUploadedFile(file, event, 'cover')
-  modalForm.value.cover_file_list = normalizeUploadFileList([file], 'cover')
-  return file
+function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
+  return async ({ file, onError, onFinish, onProgress }) => {
+    try {
+      if (!file?.file) {
+        throw new Error('未找到待上传文件')
+      }
+
+      const credential = await api.getProductMediaUploadToken({
+        file_name: file.name,
+        media_type: mediaType,
+        content_type: file.type || '',
+      })
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        const formData = new FormData()
+
+        xhr.open('POST', credential.data.upload_url, true)
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return
+          onProgress({ percent: Math.round((event.loaded / event.total) * 100) })
+        }
+        xhr.onerror = () => reject(new Error('上传到七牛失败'))
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+            return
+          }
+          reject(new Error('上传到七牛失败'))
+        }
+
+        formData.append('token', credential.data.upload_token)
+        formData.append('key', credential.data.object_key)
+        formData.append('file', file.file)
+        xhr.send(formData)
+      })
+
+      applyUploadedFile(fieldName, prefix, file, credential.data.preview_url || credential.data.url)
+      file.rawUrl = credential.data.url
+      onFinish()
+    } catch (error) {
+      syncUploadField(fieldName, prefix)
+      onError()
+      if (!error?.code) {
+        $message.error(error.message || '上传失败')
+      }
+    }
+  }
 }
 
-function handleImageUploadFinish({ file, event }) {
-  finalizeUploadedFile(file, event, 'image')
-  modalForm.value.image_file_list = normalizeUploadFileList(modalForm.value.image_file_list, 'image')
-  return file
-}
-
-function handleVideoUploadFinish({ file, event }) {
-  finalizeUploadedFile(file, event, 'video')
-  modalForm.value.video_file_list = normalizeUploadFileList(modalForm.value.video_file_list, 'video')
-  return file
-}
+const uploadCoverFile = createProductMediaUploadRequest('cover_file_list', 'cover', 'cover')
+const uploadImageFile = createProductMediaUploadRequest('image_file_list', 'image', 'image')
+const uploadVideoFile = createProductMediaUploadRequest('video_file_list', 'video', 'video')
 
 const columns = computed(() => [
   {
@@ -507,15 +528,31 @@ function openEditModal(row) {
     product_code: row.product_code || '',
     desc: row.desc || '',
     detail_description_text: JSON.stringify(row.detail_description || [], null, 2),
-    cover_file_list: buildPresetUploadList(row.cover_image_url ? [row.cover_image_url] : [], 'cover'),
-    image_file_list: buildPresetUploadList(row.image_urls || [], 'image'),
-    video_file_list: buildPresetUploadList(row.video_urls || [], 'video'),
+    cover_file_list: buildPresetUploadList(
+      row.cover_image_url ? [row.cover_image_url] : [],
+      'cover',
+      row.cover_image_storage_url ? [row.cover_image_storage_url] : []
+    ),
+    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_storage_urls || []),
+    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_storage_urls || []),
     click_count: row.click_count || 0,
     status: row.status,
     order: row.order || 0,
   }
   syncModalBrand()
   modalVisible.value = true
+}
+
+function handleCoverFileListChange(fileList) {
+  modalForm.value.cover_file_list = normalizeUploadFileList(fileList, 'cover')
+}
+
+function handleImageFileListChange(fileList) {
+  modalForm.value.image_file_list = normalizeUploadFileList(fileList, 'image')
+}
+
+function handleVideoFileListChange(fileList) {
+  modalForm.value.video_file_list = normalizeUploadFileList(fileList, 'video')
 }
 
 function handleCategoryFilterChange() {
@@ -660,9 +697,9 @@ async function toggleStatus(row, nextValue) {
     product_code_custom: row.product_code_custom || '',
     desc: row.desc || '',
     detail_description: row.detail_description || [],
-    cover_image_url: row.cover_image_url,
-    image_urls: row.image_urls || [],
-    video_urls: row.video_urls || [],
+    cover_image_url: row.cover_image_storage_url || row.cover_image_url,
+    image_urls: row.image_storage_urls || row.image_urls || [],
+    video_urls: row.video_storage_urls || row.video_urls || [],
     click_count: row.click_count || 0,
     status: nextValue,
     order: row.order || 0,
@@ -794,10 +831,10 @@ function goToProductImport() {
               <NUpload
                 v-model:file-list="modalForm.cover_file_list"
                 accept="image/*"
-                :action="PRODUCT_UPLOAD_ACTION"
+                :custom-request="uploadCoverFile"
                 list-type="image-card"
                 :max="1"
-                @finish="handleCoverUploadFinish"
+                @update:file-list="handleCoverFileListChange"
               >
                 <NIcon v-if="modalForm.cover_file_list.length < 1" size="40">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -812,10 +849,10 @@ function goToProductImport() {
               <NUpload
                 v-model:file-list="modalForm.image_file_list"
                 accept="image/*"
-                :action="PRODUCT_UPLOAD_ACTION"
+                :custom-request="uploadImageFile"
                 list-type="image-card"
                 multiple
-                @finish="handleImageUploadFinish"
+                @update:file-list="handleImageFileListChange"
               >
                 <NIcon size="40">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -830,9 +867,9 @@ function goToProductImport() {
               <NUpload
                 v-model:file-list="modalForm.video_file_list"
                 accept="video/*"
-                :action="PRODUCT_UPLOAD_ACTION"
+                :custom-request="uploadVideoFile"
                 multiple
-                @finish="handleVideoUploadFinish"
+                @update:file-list="handleVideoFileListChange"
               >
                 <NButton secondary>上传视频</NButton>
               </NUpload>

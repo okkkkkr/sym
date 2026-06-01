@@ -42,6 +42,9 @@ class CategoryUpdate(BaseCategory):
     id: int
 
 
+class CategoryImportItem(BaseCategory): ...
+
+
 class CategoryInheritResult(BaseModel):
     source_id: int
     target_id: int

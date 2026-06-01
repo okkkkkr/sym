@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
@@ -24,6 +26,9 @@ class ProductImportUploadService:
     def get_merged_file_path(self, upload_id: str, filename: str) -> str:
         return os.path.join(self.get_upload_dir(upload_id), filename)
 
+    def get_extract_dir(self) -> str:
+        return os.path.join(self.base_dir, "extract")
+
     async def init_upload(
         self,
         *,
@@ -36,7 +41,6 @@ class ProductImportUploadService:
         import_strategy: str,
     ) -> dict:
         upload_id = uuid4().hex
-        upload_dir = self.get_upload_dir(upload_id)
         chunks_dir = self.get_chunks_dir(upload_id)
         os.makedirs(chunks_dir, exist_ok=True)
         meta = {
@@ -120,8 +124,100 @@ class ProductImportUploadService:
 
     async def cleanup_upload(self, upload_id: str) -> None:
         upload_dir = self.get_upload_dir(upload_id)
-        if os.path.exists(upload_dir):
-            shutil.rmtree(upload_dir)
+        self.cleanup_path(upload_dir)
+
+    def cleanup_path(self, path: str | Path) -> int:
+        cleanup_path = self._ensure_safe_path(path)
+        if not cleanup_path.exists():
+            return 0
+        size = self.get_path_size(cleanup_path)
+        if cleanup_path.is_dir():
+            shutil.rmtree(cleanup_path)
+        else:
+            cleanup_path.unlink()
+        return size
+
+    def list_expired_upload_dirs(self, retention_hours: int) -> list[dict]:
+        base_dir = self._resolve_base_dir()
+        if not base_dir.exists():
+            return []
+
+        expired_dirs = []
+        for upload_dir in base_dir.iterdir():
+            if not upload_dir.is_dir() or upload_dir.name == "extract":
+                continue
+            meta_path = upload_dir / "meta.json"
+            chunks_dir = upload_dir / "chunks"
+            if not meta_path.exists() and not chunks_dir.exists():
+                continue
+            if not self._is_expired(upload_dir, retention_hours):
+                continue
+            expired_dirs.append(
+                {
+                    "upload_id": upload_dir.name,
+                    "path": str(upload_dir),
+                    "meta": self._read_meta(meta_path),
+                    "size": self.get_path_size(upload_dir),
+                }
+            )
+        return expired_dirs
+
+    def list_expired_extract_dirs(self, retention_hours: int) -> list[dict]:
+        extract_dir = self._ensure_safe_path(self.get_extract_dir())
+        if not extract_dir.exists():
+            return []
+
+        expired_dirs = []
+        for task_dir in extract_dir.iterdir():
+            if not task_dir.is_dir() or not self._is_expired(task_dir, retention_hours):
+                continue
+            expired_dirs.append(
+                {
+                    "task_id": int(task_dir.name) if task_dir.name.isdigit() else None,
+                    "path": str(task_dir),
+                    "size": self.get_path_size(task_dir),
+                }
+            )
+        return expired_dirs
+
+    def get_path_size(self, path: str | Path) -> int:
+        safe_path = self._ensure_safe_path(path)
+        if not safe_path.exists():
+            return 0
+        if safe_path.is_file():
+            return safe_path.stat().st_size
+        total_size = 0
+        for root, _, files in os.walk(safe_path):
+            for filename in files:
+                file_path = Path(root) / filename
+                if file_path.exists():
+                    total_size += file_path.stat().st_size
+        return total_size
+
+    def _resolve_base_dir(self) -> Path:
+        return Path(self.base_dir).resolve()
+
+    def _ensure_safe_path(self, path: str | Path) -> Path:
+        safe_path = Path(path).resolve()
+        try:
+            safe_path.relative_to(self._resolve_base_dir())
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail="临时文件路径不在允许清理范围内") from exc
+        return safe_path
+
+    def _is_expired(self, path: Path, retention_hours: int) -> bool:
+        retention_deadline = datetime.now() - timedelta(hours=max(1, int(retention_hours)))
+        return datetime.fromtimestamp(path.stat().st_mtime) < retention_deadline
+
+    @staticmethod
+    def _read_meta(meta_path: Path) -> dict:
+        if not meta_path.exists():
+            return {}
+        try:
+            with open(meta_path, "r", encoding="utf-8") as file_obj:
+                return json.load(file_obj)
+        except (OSError, ValueError):
+            return {}
 
     def _write_meta(self, upload_id: str, meta: dict) -> None:
         os.makedirs(self.get_upload_dir(upload_id), exist_ok=True)
