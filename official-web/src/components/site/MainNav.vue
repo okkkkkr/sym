@@ -3,17 +3,19 @@ import { computed, markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
 import { FacebookOutlined, LinkOutlined, MailOutlined, PhoneOutlined, WechatOutlined, WhatsAppOutlined } from '@ant-design/icons-vue'
 import { RouterLink, useRoute } from 'vue-router'
 
+import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories, resolveCategoryKey } from '../../services/catalog'
 import { fetchActiveContacts } from '../../services/contacts'
 
 const route = useRoute()
 const isSmallScreen = ref(false)
-const logoImage = 'sym-logo.jpg'
 const categories = ref([])
 const contacts = ref([])
+const { siteConfig, loadSiteConfig } = useSiteConfig()
 
 const contactPopoverTrigger = computed(() => (isSmallScreen.value ? 'click' : 'hover'))
 const navContacts = computed(() => contacts.value.slice(0, 2))
+const logoImage = computed(() => siteConfig.value.logo_url)
 
 let mediaQuery
 
@@ -68,6 +70,8 @@ onMounted(() => {
   mediaQuery = window.matchMedia('(max-width: 767px)')
   isSmallScreen.value = mediaQuery.matches
 
+  loadSiteConfig().catch(() => {})
+
   fetchCatalogCategories()
     .then((data) => {
       categories.value = data
@@ -112,7 +116,12 @@ onBeforeUnmount(() => {
     <div class="page-container main-nav__inner">
       <RouterLink to="/" class="main-nav__brand">
         <span class="main-nav__logo" aria-hidden="true">
-          <img :src="logoImage" alt="" class="main-nav__logo-face main-nav__logo-face--front main-nav__logo-image" />
+          <img
+            v-if="logoImage"
+            :src="logoImage"
+            alt=""
+            class="main-nav__logo-face main-nav__logo-face--front main-nav__logo-image"
+          />
         </span>
       </RouterLink>
 

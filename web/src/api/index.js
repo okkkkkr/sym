@@ -146,6 +146,9 @@ export default {
   createPlatform: (data = {}) => request.post('/platform/create', data),
   updatePlatform: (data = {}) => request.post('/platform/update', data),
   deletePlatform: (params = {}) => request.delete('/platform/delete', { params }),
+  // site config
+  getSiteConfig: () => request.get('/site-config/get'),
+  updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getActiveBanners: (params = {}) => request.get('/base/banners', { params, noNeedToken: true }),
   getActiveContacts: (params = {}) => request.get('/base/contacts', { params, noNeedToken: true }),
   // products

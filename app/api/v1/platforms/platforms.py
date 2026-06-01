@@ -5,20 +5,20 @@ from tortoise.expressions import Q
 from tortoise.functions import Count
 
 from app.controllers.platform import platform_controller
+from app.controllers.site_config import site_config_controller
 from app.models.admin import ChannelVisit
 from app.schemas.base import Success, SuccessExtra
 from app.schemas.platforms import PlatformCreate, PlatformUpdate
-from app.settings import settings
 
 router = APIRouter()
 
 NATURE_CUSTOM_NAME = "nature"
 
 
-def build_share_url(custom_name: str) -> str:
-    if custom_name == NATURE_CUSTOM_NAME:
+def build_share_url(custom_name: str, share_base_url: str) -> str:
+    if custom_name == NATURE_CUSTOM_NAME or not share_base_url:
         return ""
-    parts = urlsplit(settings.PUBLIC_SITE_URL)
+    parts = urlsplit(share_base_url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["plat"] = custom_name
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
@@ -31,10 +31,17 @@ async def get_click_count_map() -> dict[str, int]:
     return {item["custom_name"]: item["click_count"] for item in rows}
 
 
-async def serialize_platform(platform_obj, click_count_map: dict[str, int]):
+async def get_share_base_url() -> str:
+    site_config_obj = await site_config_controller.get_singleton()
+    if not site_config_obj:
+        return ""
+    return str(site_config_obj.share_base_url or "").strip()
+
+
+async def serialize_platform(platform_obj, click_count_map: dict[str, int], share_base_url: str):
     item = await platform_obj.to_dict()
     item["click_count"] = click_count_map.get(platform_obj.custom_name, 0)
-    item["share_url"] = build_share_url(platform_obj.custom_name)
+    item["share_url"] = build_share_url(platform_obj.custom_name, share_base_url)
     item["is_system"] = platform_obj.custom_name == NATURE_CUSTOM_NAME
     return item
 
@@ -50,10 +57,10 @@ async def list_platform(
     q = Q()
     if keyword:
         q &= Q(platform_name__contains=keyword) | Q(custom_name__contains=keyword)
-    click_count_map = await get_click_count_map()
+    click_count_map, share_base_url = await get_click_count_map(), await get_share_base_url()
     if sort_field == "click_count":
         platform_objs = await platform_controller.model.filter(q)
-        data = [await serialize_platform(obj, click_count_map) for obj in platform_objs]
+        data = [await serialize_platform(obj, click_count_map, share_base_url) for obj in platform_objs]
         data.sort(key=lambda item: item["click_count"], reverse=sort_order != "asc")
         total = len(data)
         offset = (page - 1) * page_size
@@ -66,14 +73,14 @@ async def list_platform(
         allowed_fields={"updated_at", "platform_name", "custom_name"},
     )
     total, platform_objs = await platform_controller.list(page=page, page_size=page_size, search=q, order=order)
-    data = [await serialize_platform(obj, click_count_map) for obj in platform_objs]
+    data = [await serialize_platform(obj, click_count_map, share_base_url) for obj in platform_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
 
 @router.get("/get", summary="查看渠道")
 async def get_platform(id: int = Query(..., description="渠道ID")):
     platform_obj = await platform_controller.get(id=id)
-    return Success(data=await serialize_platform(platform_obj, await get_click_count_map()))
+    return Success(data=await serialize_platform(platform_obj, await get_click_count_map(), await get_share_base_url()))
 
 
 @router.post("/create", summary="创建渠道")

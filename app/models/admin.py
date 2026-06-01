@@ -109,6 +109,17 @@ class Platform(BaseModel, TimestampMixin):
         table = "platform"
 
 
+class SiteConfig(BaseModel, TimestampMixin):
+    logo_url = fields.CharField(max_length=500, default="", description="站点 Logo URL")
+    about_title = fields.CharField(max_length=100, default="", description="About 标题")
+    about_lines = fields.JSONField(default=list, description="About 文案段落")
+    footer_disclaimer = fields.CharField(max_length=500, default="", description="底部声明")
+    share_base_url = fields.CharField(max_length=500, default="", description="渠道分享基础链接")
+
+    class Meta:
+        table = "site_config"
+
+
 class ChannelVisit(BaseModel):
     visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
     platform_name_snapshot = fields.CharField(max_length=100, description="渠道名称快照")

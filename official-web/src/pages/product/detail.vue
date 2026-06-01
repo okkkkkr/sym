@@ -12,17 +12,10 @@ const activeIndex = ref(0);
 const thumbRefs = ref([]);
 const product = ref(null)
 const relatedProducts = ref([])
-const brandName = ref('SYM Studio')
+const brandName = ref('')
 const categoryLabelText = ref('')
 
-const categoryKey = computed(
-  () =>
-    product.value?.category ??
-    String(route.query.category ?? "").toLowerCase(),
-);
-const categoryLabel = computed(
-  () => categoryLabelText.value || String(categoryKey.value || 'products').toUpperCase(),
-);
+const categoryLabel = computed(() => String(categoryLabelText.value || '').trim())
 
 const gallery = computed(() => {
   if (!product.value) {
@@ -106,12 +99,13 @@ async function loadProduct() {
     categoryLabelText.value = payload.categoryLabel || ''
     product.value = payload.product
     relatedProducts.value = payload.relatedProducts || []
-    brandName.value = payload.brandName || 'SYM Studio'
+    brandName.value = payload.brandName || ''
     reportProductClick(route.params.productId)
   } catch (error) {
     categoryLabelText.value = ''
     product.value = null
     relatedProducts.value = []
+    brandName.value = ''
     message.error(error.message)
   }
 }
@@ -204,12 +198,12 @@ watch(() => route.params.productId, () => {
 
       <aside class="product-detail__info">
         <h1>{{ product.name }}</h1>
-        <p class="product-detail__brand">Brand: {{ brandName }}</p>
+        <p v-if="brandName" class="product-detail__brand">Brand: {{ brandName }}</p>
         <p class="product-detail__description">
           {{ product.detailDescription ?? product.description }}
         </p>
 
-        <div class="product-detail__meta">
+        <div v-if="categoryLabel" class="product-detail__meta">
           <p>
             Category:
             <RouterLink :to="categoryLink(product.category)">{{
@@ -240,7 +234,7 @@ watch(() => route.params.productId, () => {
     </div>
 
     <section class="product-detail__empty page-container">
-      <h1>Product not found</h1>
+      <h1>Item not found</h1>
       <p>The requested item does not exist or is no longer available.</p>
     </section>
   </template>

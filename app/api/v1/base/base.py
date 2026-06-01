@@ -11,6 +11,7 @@ from app.controllers.banner import banner_controller
 from app.controllers.category import category_controller
 from app.controllers.contact import contact_controller
 from app.controllers.product import product_controller
+from app.controllers.site_config import serialize_site_config, site_config_controller
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
@@ -166,6 +167,11 @@ async def get_active_banners():
         order=["-priority", "id"],
     )
     return Success(data=[await obj.to_dict() for obj in banner_objs])
+
+
+@router.get("/site-config", summary="查看公开站点配置")
+async def get_public_site_config():
+    return Success(data=serialize_site_config(await site_config_controller.get_singleton()))
 
 
 def serialize_dashboard_product(product_obj):

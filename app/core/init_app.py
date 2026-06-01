@@ -323,6 +323,13 @@ async def init_menus():
             "icon": "mdi:source-branch",
             "component": "/system/platform",
         },
+        {
+            "name": "站点配置",
+            "path": "site-config",
+            "order": 14,
+            "icon": "material-symbols:settings-suggest-outline",
+            "component": "/system/site-config",
+        },
     ]
 
     for item in business_children:

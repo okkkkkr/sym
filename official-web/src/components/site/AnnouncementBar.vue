@@ -1,12 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 import { fetchActiveBanners, reportBannerClick } from '../../services/banners'
 
-const fallbackBanners = [{ id: 'default', content: 'Appreciate the item and then choose it', link_url: '' }]
 const banners = ref([])
-
-const slides = computed(() => (banners.value.length ? banners.value : fallbackBanners))
 
 function resolveBannerTarget(linkUrl) {
   const value = String(linkUrl || '').trim()
@@ -56,10 +53,10 @@ async function handleBannerClick(event, banner) {
 </script>
 
 <template>
-  <div class="announcement-bar">
+  <div v-if="banners.length" class="announcement-bar">
     <div class="page-container announcement-bar__inner">
       <a-carousel class="announcement-bar__carousel" :autoplay="true" :autoplay-speed="3000" :dots="false">
-        <div v-for="item in slides" :key="item.id" class="announcement-bar__slide">
+        <div v-for="item in banners" :key="item.id" class="announcement-bar__slide">
           <a
             v-if="resolveBannerTarget(item.link_url).href"
             class="announcement-bar__link"

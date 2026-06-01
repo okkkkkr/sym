@@ -68,6 +68,10 @@ onMounted(() => {
 })
 
 async function copyShareUrl(row) {
+  if (!row.share_url) {
+    $message.warning('请先在站点配置中设置分享域名 URL')
+    return
+  }
   await navigator.clipboard.writeText(row.share_url)
   $message.success('推广链接已复制')
 }

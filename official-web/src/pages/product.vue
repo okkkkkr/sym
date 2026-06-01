@@ -62,7 +62,7 @@ const selectedTagIds = computed(() => {
     .filter(Boolean)
 })
 
-const pageTitle = computed(() => currentCategoryLabel.value || 'PRODUCTS')
+const pageTitle = computed(() => String(currentCategoryLabel.value || '').trim())
 
 function buildQueryKey() {
   return JSON.stringify({
@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
   <div class="product-page">
     <section class="product-page__catalog page-container">
       <div class="product-page__mobile-header">
-        <h2 class="product-page__mobile-title">{{ pageTitle }}</h2>
+        <h2 v-if="pageTitle" class="product-page__mobile-title">{{ pageTitle }}</h2>
         <button
           type="button"
           class="product-page__mobile-filter-toggle"
@@ -371,7 +371,7 @@ onBeforeUnmount(() => {
         <div v-if="products.length" class="product-page__load-state">
           <a-spin v-if="loadingMore" size="small" />
           <span v-else-if="hasMore">继续向下滚动加载更多</span>
-          <span v-else-if="total > PAGE_SIZE">No more products</span>
+          <span v-else-if="total > PAGE_SIZE">No more items</span>
         </div>
       </div>
     </section>
