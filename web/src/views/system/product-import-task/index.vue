@@ -7,7 +7,6 @@ import {
   NDrawerContent,
   NEmpty,
   NPopconfirm,
-  NProgress,
   NSelect,
   NSpace,
   NTag,
@@ -115,16 +114,6 @@ function taskPhaseDescription(status) {
   return '等待处理'
 }
 
-function taskPrimaryStatus(row) {
-  return activeTaskStatuses.includes(row?.status) ? '后台同步中' : statusLabel(row?.status)
-}
-
-function errorReportHint(row) {
-  if (canDownloadErrorReport(row)) return '错误报告已生成'
-  if (isFinalTaskStatus(row?.status)) return '当前任务没有错误报告'
-  return '任务完成后生成错误报告'
-}
-
 const taskSummaryCards = computed(() => {
   const tasks = tableData.value || []
   const total = tasks.length
@@ -174,15 +163,10 @@ const detailStatusOptions = [
   { label: '待处理', value: 'pending' },
 ]
 
-const isCurrentTaskRunning = computed(() => activeTaskStatuses.includes(currentTask.value?.status))
 const hasActiveTasks = computed(() =>
   (tableData.value || []).some((item) => activeTaskStatuses.includes(item.status))
 )
-const shouldPoll = computed(
-  () =>
-    !document.hidden &&
-    (hasActiveTasks.value || (detailVisible.value && isCurrentTaskRunning.value))
-)
+const shouldPoll = computed(() => !document.hidden && hasActiveTasks.value)
 const detailStatusBreakdown = computed(
   () => currentTask.value?.detail_summary?.status_breakdown || []
 )
@@ -283,6 +267,7 @@ const columns = computed(() => [
             size: 'tiny',
             quaternary: true,
             type: 'primary',
+            disabled: !isFinalTaskStatus(row?.status),
             onClick: () => openTaskDetail(row),
           },
           { default: () => '详情' }
@@ -357,6 +342,10 @@ const columns = computed(() => [
 ])
 
 async function openTaskDetail(row) {
+  if (!isFinalTaskStatus(row?.status)) {
+    $message.warning('任务完成后才可查看详情')
+    return
+  }
   detailVisible.value = true
   currentTask.value = row
   detailStatus.value = null
@@ -425,19 +414,19 @@ function closeDetail() {
 async function handleRetry(row) {
   await api.retryProductImportTask({ task_id: row.id })
   $message.success('任务已重新入队')
-  $table.value?.handleSearch()
   if (currentTask.value?.id === row.id) {
-    await Promise.all([fetchTaskDetail(row.id), fetchDetailItems()])
+    closeDetail()
   }
+  $table.value?.handleSearch()
 }
 
 async function handleRetryFailed(row) {
-  const res = await api.retryFailedProductImportTask({ task_id: row.id })
+  await api.retryFailedProductImportTask({ task_id: row.id })
   $message.success('失败项已重新入队')
-  await $table.value?.handleSearch()
-  if (res.data?.task_id) {
-    await openTaskDetail({ id: res.data.task_id })
+  if (currentTask.value?.id === row.id) {
+    closeDetail()
   }
+  await $table.value?.handleSearch()
 }
 
 async function handleCancel(row) {
@@ -454,12 +443,13 @@ function startPolling() {
   stopPolling()
   pollingTimer.value = window.setInterval(async () => {
     await $table.value?.handleSearch()
-    if (detailVisible.value && currentTask.value?.id) {
-      const shouldRefreshItems = isCurrentTaskRunning.value
+    if (
+      detailVisible.value &&
+      currentTask.value?.id &&
+      isFinalTaskStatus(currentTask.value.status)
+    ) {
       await fetchTaskDetail(currentTask.value.id)
-      if (shouldRefreshItems || isCurrentTaskRunning.value) {
-        await fetchDetailItems()
-      }
+      await fetchDetailItems()
     }
     syncPollingState()
   }, 3000)
@@ -488,7 +478,14 @@ onMounted(async () => {
   await $table.value?.handleSearch()
   const taskId = Number(route.query.task_id || 0)
   if (taskId) {
-    await openTaskDetail({ id: taskId })
+    try {
+      const taskRes = await api.getProductImportTask({ task_id: taskId })
+      if (isFinalTaskStatus(taskRes.data?.status)) {
+        await openTaskDetail(taskRes.data)
+      }
+    } catch (error) {
+      $message.error(error.message || '读取任务详情失败')
+    }
   }
   document.addEventListener('visibilitychange', handleVisibilityChange)
   syncPollingState()
@@ -555,33 +552,9 @@ onBeforeUnmount(() => {
               statusLabel(currentTask.status)
             }}</NTag>
             <span>文件：{{ currentTask.filename }}</span>
-            <span>进度：{{ currentTask.progress || 0 }}%</span>
             <span>成功：{{ currentTask.success_count || 0 }}</span>
             <span>失败：{{ currentTask.failed_count || 0 }}</span>
           </div>
-
-          <div class="detail-sync-panel">
-            <div class="detail-sync-head">
-              <div class="detail-sync-title">{{ taskPrimaryStatus(currentTask) }}</div>
-              <NTag :type="statusTagType(currentTask.status)">{{
-                statusLabel(currentTask.status)
-              }}</NTag>
-            </div>
-            <div class="detail-sync-desc">{{ taskPhaseDescription(currentTask.status) }}</div>
-            <div class="detail-sync-meta">
-              处理进度：{{ currentTask.progress || 0 }}%，已处理
-              {{ currentTask.processed_count || 0 }}/{{ currentTask.total_count || 0 }} 行。进度按
-              Excel 行处理统计。
-            </div>
-            <div class="detail-sync-meta">{{ errorReportHint(currentTask) }}</div>
-          </div>
-
-          <NProgress
-            type="line"
-            :percentage="currentTask.progress || 0"
-            :status="currentTask.progress === 100 ? 'success' : 'info'"
-            indicator-placement="inside"
-          />
 
           <div class="detail-overview-grid">
             <div class="detail-overview-card">
@@ -603,6 +576,20 @@ onBeforeUnmount(() => {
             <div class="detail-overview-card">
               <div class="detail-overview-label">导入策略</div>
               <div class="detail-overview-value">{{ currentTask.import_strategy || '-' }}</div>
+            </div>
+            <div class="detail-overview-card">
+              <div class="detail-overview-label">任务结果</div>
+              <div class="detail-overview-value">
+                {{ taskPhaseDescription(currentTask.status) }}
+              </div>
+            </div>
+            <div class="detail-overview-card">
+              <div class="detail-overview-label">错误报告</div>
+              <div class="detail-overview-value">
+                {{
+                  canDownloadErrorReport(currentTask) ? '已生成，可下载' : '当前任务没有错误报告'
+                }}
+              </div>
             </div>
           </div>
 
@@ -762,37 +749,6 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.detail-sync-panel {
-  padding: 12px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-}
-
-.detail-sync-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.detail-sync-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.detail-sync-desc {
-  margin-top: 8px;
-  color: #374151;
-}
-
-.detail-sync-meta {
-  margin-top: 6px;
-  color: #6b7280;
-  line-height: 1.5;
 }
 
 .detail-overview-grid {

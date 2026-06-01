@@ -31,6 +31,18 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
     async def mark_queued(self, task_id: int) -> ProductImportTask:
         return await self.update(id=task_id, obj_in={"status": ProductImportTaskStatus.QUEUED})
 
+    async def get_active_task(self, exclude_task_id: int | None = None) -> ProductImportTask | None:
+        query = self.model.filter(
+            status__in=[
+                ProductImportTaskStatus.UPLOADING,
+                ProductImportTaskStatus.QUEUED,
+                ProductImportTaskStatus.RUNNING,
+            ]
+        )
+        if exclude_task_id:
+            query = query.exclude(id=exclude_task_id)
+        return await query.order_by("created_at", "id").first()
+
     async def mark_running(self, task_id: int) -> ProductImportTask:
         task = await self.get(id=task_id)
         if task.status == ProductImportTaskStatus.CANCELED:

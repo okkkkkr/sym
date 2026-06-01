@@ -162,14 +162,17 @@ export default {
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),
-  getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
+  getProductImportUploadStatus: (params = {}) =>
+    request.get('/product/import/upload-status', { params }),
   completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
+  getActiveProductImportTask: () => request.get('/product/import/active-task'),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
   getProductImportTask: (params = {}) => request.get('/product/import/task', { params }),
   getProductImportTaskItems: (params = {}) => request.get('/product/import/task/items', { params }),
   cancelProductImportTask: (data = {}) => request.post('/product/import/task/cancel', data),
   retryProductImportTask: (data = {}) => request.post('/product/import/task/retry', data),
-  retryFailedProductImportTask: (data = {}) => request.post('/product/import/task/retry-failed', data),
+  retryFailedProductImportTask: (data = {}) =>
+    request.post('/product/import/task/retry-failed', data),
   downloadProductImportTemplate: () =>
     downloadScopedGetFile('/product/import/template', 'product-import-template.xlsx'),
   downloadProductImportExample: () =>
