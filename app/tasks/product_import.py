@@ -42,7 +42,7 @@ def build_media_object_key(product_name: str, local_path: str, media_type: str) 
     prefix = "items/videos" if media_type == "video" else "items/images"
     product_slug = sanitize_object_key_part(product_name, fallback="product")
     filename = sanitize_object_key_part(Path(local_path).name)
-    return f"{prefix}/imports/{product_slug}/{uuid4().hex}_{filename}"
+    return f"{prefix}/{product_slug}/{uuid4().hex}_{filename}"
 
 
 async def upload_media_files(product_name: str, file_paths: list[str], media_type: str) -> list[dict[str, str]]:
