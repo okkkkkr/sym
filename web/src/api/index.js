@@ -149,6 +149,7 @@ export default {
   // site config
   getSiteConfig: () => request.get('/site-config/get'),
   getSiteConfigLogoUploadToken: (data = {}) => request.post('/site-config/logo/upload-token', data),
+  deleteSiteConfigLogo: (data = {}) => request.post('/site-config/logo/delete', data),
   updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getActiveBanners: (params = {}) => request.get('/base/banners', { params, noNeedToken: true }),
   getActiveContacts: (params = {}) => request.get('/base/contacts', { params, noNeedToken: true }),
