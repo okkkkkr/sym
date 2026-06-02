@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
-    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 1024 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 2 * 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     PRODUCT_IMPORT_CHUNK_SIZE: int = 5 * 1024 * 1024
     PRODUCT_IMPORT_MAX_CONCURRENCY: int = 2

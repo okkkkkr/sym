@@ -24,7 +24,7 @@ const systemTask = ref(null)
 const pollingTimer = ref(null)
 
 const chunkSize = 5 * 1024 * 1024
-const maxFileSize = 1024 * 1024 * 1024
+const maxFileSize = 2 * 1024 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
 const activeTaskStatuses = ['uploading', 'queued', 'running']
 
@@ -236,7 +236,7 @@ async function handleFileChange(event) {
     return
   }
   if (file.size > maxFileSize) {
-    $message.error('文件大小不能超过 1GB')
+    $message.error('文件大小不能超过 2GB')
     event.target.value = ''
     return
   }
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
 
     <NSpace vertical :size="16">
       <NAlert type="info" :show-icon="false">
-        支持上传不超过 1GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
+        支持上传不超过 2GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
         product.xlsx，素材目录名需与 Excel 中的 name 精确一致。
       </NAlert>
 
