@@ -1,7 +1,26 @@
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+DEFAULT_CONTACT_QR_IMAGE_URL = "https://os.alipayobjects.com/rmsportal/QBnOOoLaAfKPirc.png"
+
+
+def normalize_contact_qr_image_url(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    if not normalized or normalized == DEFAULT_CONTACT_QR_IMAGE_URL:
+        return ""
+    if not normalized.startswith(("http://", "https://")):
+        return normalized.lstrip("/")
+
+    path = urlsplit(normalized).path.lstrip("/")
+    if path.startswith("uploads/contacts/"):
+        return path[len("uploads/") :]
+    if path.startswith("contacts/"):
+        return path
+    return normalized
 
 
 class BaseContact(BaseModel):
@@ -13,6 +32,18 @@ class BaseContact(BaseModel):
     qr_image_url: Optional[str] = Field(None, description="二维码图片")
     order: int = Field(0, description="排序")
     is_active: bool = Field(True, description="是否启用")
+
+    @field_validator("platform", "display_name", "contact_type", "contact_value", "link_url", mode="before")
+    @classmethod
+    def normalize_text(cls, value):
+        if value is None:
+            return None
+        return str(value).strip()
+
+    @field_validator("qr_image_url", mode="before")
+    @classmethod
+    def normalize_qr_image_url(cls, value):
+        return normalize_contact_qr_image_url(value)
 
 
 class ContactCreate(BaseContact): ...

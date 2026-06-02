@@ -27,7 +27,6 @@ import api from '@/api'
 
 defineOptions({ name: '联系方式管理' })
 
-const DEFAULT_QR_IMAGE_URL = 'https://os.alipayobjects.com/rmsportal/QBnOOoLaAfKPirc.png'
 let qrFileSeed = 0
 
 const $table = ref(null)
@@ -37,6 +36,7 @@ const vPermission = resolveDirective('permission')
 const statusUpdatingIds = ref([])
 const uploadingQr = ref(false)
 const qrFileList = ref([])
+const qrObjectKey = ref('')
 const actionCellStyle =
   'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
 
@@ -106,6 +106,10 @@ function customNextSortOrder(order) {
   return false
 }
 
+function getQrPreviewUrl(row) {
+  return String(row?.qr_image_preview_url || '').trim()
+}
+
 function getFileNameFromUrl(url) {
   const normalized = String(url || '').trim()
   if (!normalized) return 'qr'
@@ -151,10 +155,11 @@ function normalizeQrFileList(fileList = []) {
 
 function syncQrValue(fileList = []) {
   qrFileList.value = normalizeQrFileList(fileList).slice(-1)
-  modalForm.value.qr_image_url = qrFileList.value[0]?.rawUrl || ''
+  modalForm.value.qr_image_url = qrObjectKey.value
 }
 
 function syncQrFileList(row = null) {
+  qrObjectKey.value = String(row?.qr_image_url || '').trim()
   qrFileList.value = row?.qr_image_preview_url
     ? [createQrUploadFile(row.qr_image_preview_url, row.qr_image_url)]
     : []
@@ -162,6 +167,7 @@ function syncQrFileList(row = null) {
 
 function handleAdd() {
   addContact()
+  qrObjectKey.value = ''
   qrFileList.value = []
 }
 
@@ -209,6 +215,7 @@ async function handleQrUpload({ file, onError, onFinish, onProgress }) {
     file.url = credential.data.preview_url || credential.data.url
     file.thumbnailUrl = file.url
     file.rawUrl = credential.data.object_key
+    qrObjectKey.value = credential.data.object_key
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)
     }
@@ -226,6 +233,9 @@ async function handleQrUpload({ file, onError, onFinish, onProgress }) {
 }
 
 function handleQrFileListChange(fileList) {
+  if (!fileList.length) {
+    qrObjectKey.value = ''
+  }
   syncQrValue(fileList)
 }
 
@@ -234,6 +244,7 @@ function handleSave() {
     $message.warning('二维码图片上传中，请稍后保存')
     return
   }
+  modalForm.value.qr_image_url = qrObjectKey.value
   saveContact()
 }
 
@@ -290,9 +301,13 @@ const columns = computed(() => [
     width: 110,
     align: 'center',
     render(row) {
+      const qrImagePreviewUrl = getQrPreviewUrl(row)
+      if (!qrImagePreviewUrl) {
+        return h('span', { style: 'color: var(--n-text-color-disabled);' }, '-')
+      }
       return h(NImage, {
         width: 56,
-        src: row.qr_image_preview_url || row.qr_image_url || DEFAULT_QR_IMAGE_URL,
+        src: qrImagePreviewUrl,
         objectFit: 'cover',
       })
     },
