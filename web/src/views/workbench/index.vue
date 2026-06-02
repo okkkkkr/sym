@@ -175,7 +175,7 @@ const rankingPanels = computed(() => [
   {
     id: 'channel-visit',
     title: t('views.workbench.label_top_channel_visits'),
-    routeName: '渠道访问量',
+    routeName: '渠道访问数据',
     items: rankingState.value.channelVisits,
     getTitle: (item) => item.platform_name || '-',
     getMeta: (item) => item.custom_name || t('views.workbench.text_rank_no_meta'),

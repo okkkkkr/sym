@@ -103,7 +103,7 @@ class SiteVisit(BaseModel):
 class Platform(BaseModel, TimestampMixin):
     platform_name = fields.CharField(max_length=100, description="渠道名称", index=True)
     custom_name = fields.CharField(max_length=50, unique=True, description="自定义标识", index=True)
-    click_count = fields.IntField(default=0, description="渠道访问量", index=True)
+    click_count = fields.IntField(default=0, description="渠道访问数据", index=True)
 
     class Meta:
         table = "platform"

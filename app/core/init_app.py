@@ -383,7 +383,7 @@ async def init_menus():
             "component": "/data/banner-click",
         },
         {
-            "name": "渠道访问量",
+            "name": "渠道访问数据",
             "path": "channel-visit",
             "order": 5,
             "icon": "carbon:chart-relationship",

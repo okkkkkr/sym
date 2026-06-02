@@ -24,7 +24,7 @@ async def serialize_brand_stats_payload(brand_obj):
     return item
 
 
-@router.get("/channel-visit/list", summary="查看渠道访问量数据")
+@router.get("/channel-visit/list", summary="查看渠道访问数据")
 async def list_channel_visit_stats(
     page: int = Query(1, description="页码"),
     page_size: int = Query(10, description="每页数量"),

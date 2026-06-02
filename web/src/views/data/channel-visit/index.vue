@@ -8,7 +8,7 @@ import CrudTable from '@/components/table/CrudTable.vue'
 
 import api from '@/api'
 
-defineOptions({ name: '渠道访问量' })
+defineOptions({ name: '渠道访问数据' })
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -38,7 +38,7 @@ const columns = computed(() => [
     ellipsis: { tooltip: true },
   },
   {
-    title: '渠道访问量',
+    title: '渠道访问数据',
     key: 'click_count',
     width: 130,
     align: 'center',
@@ -68,7 +68,7 @@ const columns = computed(() => [
 </script>
 
 <template>
-  <CommonPage title="渠道访问量">
+  <CommonPage title="渠道访问数据">
     <CrudTable
       ref="$table"
       v-model:query-items="queryItems"
