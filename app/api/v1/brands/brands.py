@@ -255,9 +255,9 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
                 detail=f"第 {index} 行所属分类不存在: {';'.join(invalid_category_names)}",
             )
 
-        is_active_value = str(row_map.get("是否启用") or "true").strip().lower()
-        if is_active_value not in {"true", "false", "1", "0", "是", "否"}:
-            raise HTTPException(status_code=400, detail=f"第 {index} 行是否启用值不合法")
+        is_active_value = str(row_map.get("是否启用") or "1").strip()
+        if is_active_value not in {"1", "0"}:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行是否启用值不合法，仅支持 1/0")
 
         try:
             search_count = int(row_map.get("检索次数") or 0)
@@ -270,7 +270,7 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
             "desc": str(row_map.get("品牌描述") or "").strip() or None,
             "search_count": search_count,
             "order": order,
-            "is_active": is_active_value in {"true", "1", "是"},
+            "is_active": is_active_value == "1",
         }
 
         existing_item = grouped_items.get(name)

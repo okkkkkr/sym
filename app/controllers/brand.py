@@ -45,7 +45,7 @@ class BrandController(CRUDBase[Brand, BrandCreate, BrandUpdate]):
         worksheet = workbook.active
         worksheet.title = "品牌导入模板"
         worksheet.append(["品牌名称", "所属分类", "品牌描述", "检索次数", "排序", "是否启用"])
-        worksheet.append(["示例品牌", "示例分类A;示例分类B", "这是一条示例品牌描述", 0, 0, "是"])
+        worksheet.append(["示例品牌", "示例分类A;示例分类B", "这是一条示例品牌描述", 0, 0, 1])
 
         buffer = BytesIO()
         workbook.save(buffer)

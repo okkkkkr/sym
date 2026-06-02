@@ -449,6 +449,53 @@ onBeforeUnmount(() => {
         product.xlsx，素材目录名需与 Excel 中的 name 精确一致。
       </NAlert>
 
+      <NCard title="上传 ZIP 包" size="small">
+        <NSpace vertical :size="12">
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept=".zip"
+            style="display: none"
+            @change="handleFileChange"
+          />
+          <div class="upload-panel">
+            <div class="upload-meta">
+              <div class="upload-name">{{ selectedFileLabel }}</div>
+              <div class="upload-desc">导入策略：仅新增，不覆盖历史数据</div>
+              <div v-if="uploadStatusText" class="upload-status">{{ uploadStatusText }}</div>
+              <div v-if="uploadSpeedText" class="upload-speed">上传速度：{{ uploadSpeedText }}</div>
+              <div v-if="uploadEtaText" class="upload-eta">{{ uploadEtaText }}</div>
+            </div>
+            <NSpace>
+              <NButton :disabled="uploadLocked || ownUploadingTask" @click="triggerSelectFile">
+                选择 ZIP
+              </NButton>
+              <NButton
+                v-permission="'post/api/v1/product/import/upload-init'"
+                type="primary"
+                :disabled="!selectedFile || uploadLocked"
+                :loading="uploadLoading"
+                @click="startUpload"
+              >
+                {{ uploadButtonText }}
+              </NButton>
+              <NButton :disabled="!canTogglePause" @click="togglePauseUpload">
+                {{ pauseButtonText }}
+              </NButton>
+            </NSpace>
+          </div>
+        </NSpace>
+      </NCard>
+
+      <NCard v-if="!systemTask" title="导入说明" size="small">
+        <NSpace vertical :size="10">
+          <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
+          <div>2. 品牌、分类、标签均按名称精确匹配。</div>
+          <div>3. 图片目录至少包含一张图片，优先使用文件名含 _cover 的图片作为封面。</div>
+          <div>4. 同名好物会直接拦截并记为失败，不会创建重复记录。</div>
+        </NSpace>
+      </NCard>
+
       <NCard v-if="systemTask" title="当前系统导入任务" size="small">
         <NSpace vertical :size="14">
           <div class="task-head">
@@ -517,53 +564,6 @@ onBeforeUnmount(() => {
           <NSpace>
             <NButton type="primary" secondary @click="goToTaskCenter">查看任务记录</NButton>
           </NSpace>
-        </NSpace>
-      </NCard>
-
-      <NCard title="上传 ZIP 包" size="small">
-        <NSpace vertical :size="12">
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".zip"
-            style="display: none"
-            @change="handleFileChange"
-          />
-          <div class="upload-panel">
-            <div class="upload-meta">
-              <div class="upload-name">{{ selectedFileLabel }}</div>
-              <div class="upload-desc">导入策略：仅新增，不覆盖历史数据</div>
-              <div v-if="uploadStatusText" class="upload-status">{{ uploadStatusText }}</div>
-              <div v-if="uploadSpeedText" class="upload-speed">上传速度：{{ uploadSpeedText }}</div>
-              <div v-if="uploadEtaText" class="upload-eta">{{ uploadEtaText }}</div>
-            </div>
-            <NSpace>
-              <NButton :disabled="uploadLocked || ownUploadingTask" @click="triggerSelectFile">
-                选择 ZIP
-              </NButton>
-              <NButton
-                v-permission="'post/api/v1/product/import/upload-init'"
-                type="primary"
-                :disabled="!selectedFile || uploadLocked"
-                :loading="uploadLoading"
-                @click="startUpload"
-              >
-                {{ uploadButtonText }}
-              </NButton>
-              <NButton :disabled="!canTogglePause" @click="togglePauseUpload">
-                {{ pauseButtonText }}
-              </NButton>
-            </NSpace>
-          </div>
-        </NSpace>
-      </NCard>
-
-      <NCard title="导入说明" size="small">
-        <NSpace vertical :size="10">
-          <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
-          <div>2. 品牌、分类、标签均按名称精确匹配。</div>
-          <div>3. 图片目录至少包含一张图片，优先使用文件名含 _cover 的图片作为封面。</div>
-          <div>4. 同名好物会直接拦截并记为失败，不会创建重复记录。</div>
         </NSpace>
       </NCard>
     </NSpace>
