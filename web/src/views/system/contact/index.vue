@@ -4,6 +4,7 @@ import {
   NButton,
   NForm,
   NFormItem,
+  NIcon,
   NImage,
   NInput,
   NInputNumber,
@@ -11,6 +12,7 @@ import {
   NSelect,
   NSwitch,
   NTag,
+  NUpload,
 } from 'naive-ui'
 
 import CommonPage from '@/components/page/CommonPage.vue'
@@ -26,13 +28,17 @@ import api from '@/api'
 defineOptions({ name: '联系方式管理' })
 
 const DEFAULT_QR_IMAGE_URL = 'https://os.alipayobjects.com/rmsportal/QBnOOoLaAfKPirc.png'
+let qrFileSeed = 0
 
 const $table = ref(null)
 const queryItems = ref({})
 const sorter = ref({ columnKey: 'updated_at', order: 'descend' })
 const vPermission = resolveDirective('permission')
 const statusUpdatingIds = ref([])
-const actionCellStyle = 'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
+const uploadingQr = ref(false)
+const qrFileList = ref([])
+const actionCellStyle =
+  'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
 
 const initForm = {
   platform: '',
@@ -49,12 +55,12 @@ const {
   modalVisible,
   modalTitle,
   modalLoading,
-  handleSave,
+  handleSave: saveContact,
   modalForm,
   modalFormRef,
-  handleEdit,
+  handleEdit: editContact,
   handleDelete,
-  handleAdd,
+  handleAdd: addContact,
 } = useCRUD({
   name: '联系方式',
   initForm,
@@ -98,6 +104,137 @@ function customNextSortOrder(order) {
   if (!order) return 'descend'
   if (order === 'descend') return 'ascend'
   return false
+}
+
+function getFileNameFromUrl(url) {
+  const normalized = String(url || '').trim()
+  if (!normalized) return 'qr'
+  try {
+    const parsed = new URL(normalized)
+    return parsed.pathname.split('/').filter(Boolean).pop() || 'qr'
+  } catch {
+    return normalized.split('/').filter(Boolean).pop() || 'qr'
+  }
+}
+
+function createQrUploadFile(url, rawUrl = url) {
+  if (!url) return null
+  qrFileSeed += 1
+  return {
+    id: `qr-${qrFileSeed}`,
+    name: getFileNameFromUrl(rawUrl || url),
+    status: 'finished',
+    url,
+    thumbnailUrl: url,
+    rawUrl,
+  }
+}
+
+function normalizeQrFileList(fileList = []) {
+  return fileList
+    .map((file) => {
+      if (!file) return null
+      if (file.url || file.thumbnailUrl) {
+        return {
+          ...file,
+          url: file.url || file.thumbnailUrl,
+          thumbnailUrl: file.thumbnailUrl || file.url,
+          rawUrl: file.rawUrl || '',
+        }
+      }
+      if (!file.file) return file
+      const objectUrl = URL.createObjectURL(file.file)
+      return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
+    })
+    .filter(Boolean)
+}
+
+function syncQrValue(fileList = []) {
+  qrFileList.value = normalizeQrFileList(fileList).slice(-1)
+  modalForm.value.qr_image_url = qrFileList.value[0]?.rawUrl || ''
+}
+
+function syncQrFileList(row = null) {
+  qrFileList.value = row?.qr_image_preview_url
+    ? [createQrUploadFile(row.qr_image_preview_url, row.qr_image_url)]
+    : []
+}
+
+function handleAdd() {
+  addContact()
+  qrFileList.value = []
+}
+
+function handleEdit(row) {
+  editContact(row)
+  syncQrFileList(row)
+}
+
+async function handleQrUpload({ file, onError, onFinish, onProgress }) {
+  uploadingQr.value = true
+  try {
+    if (!file?.file) {
+      throw new Error('未找到待上传图片')
+    }
+
+    const credential = await api.getContactQrUploadToken({
+      file_name: file.name,
+      content_type: file.type || '',
+    })
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      const formData = new FormData()
+
+      xhr.open('POST', credential.data.upload_url, true)
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return
+        onProgress({ percent: Math.round((event.loaded / event.total) * 100) })
+      }
+      xhr.onerror = () => reject(new Error('上传到七牛失败'))
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+          return
+        }
+        reject(new Error('上传到七牛失败'))
+      }
+
+      formData.append('token', credential.data.upload_token)
+      formData.append('key', credential.data.object_key)
+      formData.append('file', file.file)
+      xhr.send(formData)
+    })
+
+    file.url = credential.data.preview_url || credential.data.url
+    file.thumbnailUrl = file.url
+    file.rawUrl = credential.data.object_key
+    if (!file.name) {
+      file.name = getFileNameFromUrl(file.rawUrl)
+    }
+    syncQrValue([file])
+    onFinish()
+  } catch (error) {
+    syncQrValue(qrFileList.value)
+    onError()
+    if (!error?.code) {
+      $message.error(error.message || '上传失败')
+    }
+  } finally {
+    uploadingQr.value = false
+  }
+}
+
+function handleQrFileListChange(fileList) {
+  syncQrValue(fileList)
+}
+
+function handleSave() {
+  if (uploadingQr.value) {
+    $message.warning('二维码图片上传中，请稍后保存')
+    return
+  }
+  saveContact()
 }
 
 const rules = {
@@ -155,7 +292,7 @@ const columns = computed(() => [
     render(row) {
       return h(NImage, {
         width: 56,
-        src: row.qr_image_url || DEFAULT_QR_IMAGE_URL,
+        src: row.qr_image_preview_url || row.qr_image_url || DEFAULT_QR_IMAGE_URL,
         objectFit: 'cover',
       })
     },
@@ -337,16 +474,33 @@ async function toggleStatus(row, nextValue) {
           <NInput v-model:value="modalForm.display_name" clearable placeholder="请输入展示名称" />
         </NFormItem>
         <NFormItem label="联系类型" path="contact_type">
-          <NSelect v-model:value="modalForm.contact_type" clearable :options="contactTypeOptions" placeholder="请选择联系类型" />
+          <NSelect
+            v-model:value="modalForm.contact_type"
+            clearable
+            :options="contactTypeOptions"
+            placeholder="请选择联系类型"
+          />
         </NFormItem>
         <NFormItem label="联系内容" path="contact_value">
           <NInput v-model:value="modalForm.contact_value" clearable placeholder="请输入联系内容" />
         </NFormItem>
-        <NFormItem label="跳转链接" path="link_url">
-          <NInput v-model:value="modalForm.link_url" clearable placeholder="请输入跳转链接" />
-        </NFormItem>
-        <NFormItem label="二维码链接" path="qr_image_url">
-          <NInput v-model:value="modalForm.qr_image_url" clearable placeholder="请输入二维码图片地址" />
+        <NFormItem label="二维码图片" path="qr_image_url">
+          <NUpload
+            v-model:file-list="qrFileList"
+            accept="image/*"
+            :custom-request="handleQrUpload"
+            list-type="image-card"
+            :max="1"
+            @update:file-list="handleQrFileListChange"
+          >
+            <NIcon v-if="qrFileList.length < 1" size="40">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                <path
+                  d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
+                />
+              </svg>
+            </NIcon>
+          </NUpload>
         </NFormItem>
         <NFormItem label="排序" path="order">
           <NInputNumber v-model:value="modalForm.order" clearable :min="0" style="width: 100%" />

@@ -12,7 +12,7 @@ router = APIRouter()
 
 @router.get("/get", summary="查看站点配置")
 async def get_site_config():
-    return Success(data=serialize_site_config(await site_config_controller.get_singleton(), include_storage=True))
+    return Success(data=serialize_site_config(await site_config_controller.get_singleton(), include_storage=True, include_key=True))
 
 
 @router.post("/logo/upload-token", summary="获取站点 Logo 上传凭证")
@@ -31,4 +31,4 @@ async def delete_site_logo(payload: SiteConfigLogoDeleteIn, current_user: User =
 @router.post("/update", summary="更新站点配置")
 async def update_site_config(site_config_in: SiteConfigUpdate):
     site_config_obj = await site_config_controller.update_singleton(site_config_in)
-    return Success(data=serialize_site_config(site_config_obj, include_storage=True), msg="Updated Successfully")
+    return Success(data=serialize_site_config(site_config_obj, include_storage=True, include_key=True), msg="Updated Successfully")

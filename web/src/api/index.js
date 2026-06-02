@@ -140,6 +140,7 @@ export default {
   createContact: (data = {}) => request.post('/contact/create', data),
   updateContact: (data = {}) => request.post('/contact/update', data),
   deleteContact: (params = {}) => request.delete('/contact/delete', { params }),
+  getContactQrUploadToken: (data = {}) => request.post('/contact/qr/upload-token', data),
   // platforms
   getPlatformList: (params = {}) => request.get('/platform/list', { params }),
   getPlatformById: (params = {}) => request.get('/platform/get', { params }),

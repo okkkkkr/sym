@@ -164,7 +164,7 @@ async def get_active_contacts(contact_type: str = ""):
     if contact_type:
         q &= Q(contact_type=contact_type)
     _, contact_objs = await contact_controller.list(page=1, page_size=999, search=q, order=["order", "id"])
-    return Success(data=[await obj.to_dict() for obj in contact_objs])
+    return Success(data=[await contact_controller.serialize(obj) for obj in contact_objs])
 
 
 @router.get("/banners", summary="查看启用的横幅")

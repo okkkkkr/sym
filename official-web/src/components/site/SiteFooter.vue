@@ -2,14 +2,16 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
+import { useContactPopoverTracking } from '../../composables/useContactPopoverTracking'
 import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories } from '../../services/catalog'
-import { fetchActiveContacts, reportContactClick } from '../../services/contacts'
+import { fetchActiveContacts } from '../../services/contacts'
 
 const isSmallScreen = ref(false);
 const categories = ref([])
 const contacts = ref([])
 const { siteConfig, loadSiteConfig } = useSiteConfig()
+const { handleContactPopoverChange, disposeContactPopoverTracking } = useContactPopoverTracking(isSmallScreen)
 const contactPopoverTrigger = computed(() =>
   isSmallScreen.value ? "click" : "hover",
 );
@@ -27,11 +29,10 @@ function updateSmallScreenState(event) {
   isSmallScreen.value = event.matches;
 }
 
-function handleContactClick(item, event) {
+function handleContactLinkClick(item, event) {
   if (!item?.link_url) {
     event?.preventDefault()
   }
-  reportContactClick(item?.id)
 }
 
 onMounted(() => {
@@ -65,6 +66,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  disposeContactPopoverTracking()
   if (!mediaQuery) {
     return;
   }
@@ -95,6 +97,7 @@ onBeforeUnmount(() => {
           :trigger="contactPopoverTrigger"
           placement="right"
           overlay-class-name="contact-popover"
+          @openChange="(open) => handleContactPopoverChange(item, open)"
         >
           <template #content>
             <div class="contact-popover__body">
@@ -106,7 +109,7 @@ onBeforeUnmount(() => {
 
           <span class="site-footer__contact-trigger">
             <div class="site-footer__contact-item">
-              <a :href="item.link_url || '#'" class="site-footer__link" @click="handleContactClick(item, $event)">{{ item.display_name }}</a>
+              <a :href="item.link_url || '#'" class="site-footer__link" @click="handleContactLinkClick(item, $event)">{{ item.display_name }}</a>
             </div>
           </span>
         </a-popover>

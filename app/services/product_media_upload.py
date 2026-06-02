@@ -41,6 +41,12 @@ PRODUCT_MEDIA_TYPE_RULES = {
         "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
         "mime_prefix": "image/",
     },
+    "contact_qr": {
+        "prefix": "contacts",
+        "file_prefix": "qr",
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "mime_prefix": "image/",
+    },
     "cover": {
         "prefix": "items/images",
         "file_prefix": "img",

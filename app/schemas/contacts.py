@@ -26,3 +26,8 @@ class ContactOut(BaseContact):
     id: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class ContactQrUploadTokenIn(BaseModel):
+    file_name: str = Field(..., min_length=1, description="原始文件名")
+    content_type: str = Field(default="", description="文件 MIME 类型")

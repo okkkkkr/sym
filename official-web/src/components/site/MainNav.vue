@@ -3,15 +3,17 @@ import { computed, markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
 import { FacebookOutlined, LinkOutlined, MailOutlined, PhoneOutlined, WechatOutlined, WhatsAppOutlined } from '@ant-design/icons-vue'
 import { RouterLink, useRoute } from 'vue-router'
 
+import { useContactPopoverTracking } from '../../composables/useContactPopoverTracking'
 import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories, resolveCategoryKey } from '../../services/catalog'
-import { fetchActiveContacts, reportContactClick } from '../../services/contacts'
+import { fetchActiveContacts } from '../../services/contacts'
 
 const route = useRoute()
 const isSmallScreen = ref(false)
 const categories = ref([])
 const contacts = ref([])
 const { siteConfig, loadSiteConfig } = useSiteConfig()
+const { handleContactPopoverChange, disposeContactPopoverTracking } = useContactPopoverTracking(isSmallScreen)
 
 const contactPopoverTrigger = computed(() => (isSmallScreen.value ? 'click' : 'hover'))
 const navContacts = computed(() => contacts.value.slice(0, 2))
@@ -66,10 +68,6 @@ function resolveContactIcon(item) {
   return contactIconMap[key] || markRaw(LinkOutlined)
 }
 
-function handleContactClick(item) {
-  reportContactClick(item?.id)
-}
-
 onMounted(() => {
   mediaQuery = window.matchMedia('(max-width: 767px)')
   isSmallScreen.value = mediaQuery.matches
@@ -101,6 +99,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposeContactPopoverTracking()
   if (!mediaQuery) {
     return
   }
@@ -154,6 +153,7 @@ onBeforeUnmount(() => {
           :trigger="contactPopoverTrigger"
           placement="bottomRight"
           overlay-class-name="contact-popover"
+          @openChange="(open) => handleContactPopoverChange(item, open)"
         >
           <template #content>
             <div class="contact-popover__body">
@@ -163,7 +163,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <span class="main-nav__contact-trigger" @click="handleContactClick(item)">
+          <span class="main-nav__contact-trigger">
             <component :is="resolveContactIcon(item)" class="main-nav__contact-icon" />
           </span>
         </a-popover>
