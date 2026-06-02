@@ -28,7 +28,7 @@ class ProductImportParserService:
         "brand_name": "所属品牌",
         "desc": "简介",
         "tag_names": "标签",
-        "product_code_custom": "自定义识别码",
+        "product_code_custom": "好物识别码",
         "status": "上架状态",
         "order": "排序",
         "detail_text": "详情文本",
