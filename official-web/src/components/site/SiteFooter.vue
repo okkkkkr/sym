@@ -4,7 +4,7 @@ import { RouterLink } from "vue-router";
 
 import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories } from '../../services/catalog'
-import { fetchActiveContacts } from '../../services/contacts'
+import { fetchActiveContacts, reportContactClick } from '../../services/contacts'
 
 const isSmallScreen = ref(false);
 const categories = ref([])
@@ -25,6 +25,13 @@ function categoryLink(category) {
 
 function updateSmallScreenState(event) {
   isSmallScreen.value = event.matches;
+}
+
+function handleContactClick(item, event) {
+  if (!item?.link_url) {
+    event?.preventDefault()
+  }
+  reportContactClick(item?.id)
 }
 
 onMounted(() => {
@@ -99,7 +106,7 @@ onBeforeUnmount(() => {
 
           <span class="site-footer__contact-trigger">
             <div class="site-footer__contact-item">
-              <a :href="item.link_url || '#'" class="site-footer__link">{{ item.display_name }}</a>
+              <a :href="item.link_url || '#'" class="site-footer__link" @click="handleContactClick(item, $event)">{{ item.display_name }}</a>
             </div>
           </span>
         </a-popover>

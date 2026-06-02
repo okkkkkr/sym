@@ -5,7 +5,7 @@ import { RouterLink, useRoute } from 'vue-router'
 
 import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories, resolveCategoryKey } from '../../services/catalog'
-import { fetchActiveContacts } from '../../services/contacts'
+import { fetchActiveContacts, reportContactClick } from '../../services/contacts'
 
 const route = useRoute()
 const isSmallScreen = ref(false)
@@ -64,6 +64,10 @@ function updateSmallScreenState(event) {
 function resolveContactIcon(item) {
   const key = String(item.platform || item.contact_type || '').toLowerCase()
   return contactIconMap[key] || markRaw(LinkOutlined)
+}
+
+function handleContactClick(item) {
+  reportContactClick(item?.id)
 }
 
 onMounted(() => {
@@ -159,7 +163,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <span class="main-nav__contact-trigger">
+          <span class="main-nav__contact-trigger" @click="handleContactClick(item)">
             <component :is="resolveContactIcon(item)" class="main-nav__contact-icon" />
           </span>
         </a-popover>

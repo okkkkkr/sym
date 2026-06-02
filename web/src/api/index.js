@@ -195,4 +195,5 @@ export default {
   getBrandSearchStatsList: (params = {}) => request.get('/stats/brand-search/list', { params }),
   getBannerClickStatsList: (params = {}) => request.get('/stats/banner-click/list', { params }),
   getChannelVisitStatsList: (params = {}) => request.get('/stats/channel-visit/list', { params }),
+  getContactClickStatsList: (params = {}) => request.get('/stats/contact-click/list', { params }),
 }

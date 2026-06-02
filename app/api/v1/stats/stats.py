@@ -9,7 +9,7 @@ from app.controllers.category import category_controller
 from app.controllers.product import product_controller
 from tortoise.functions import Count
 
-from app.models.admin import ChannelVisit, Platform, SiteVisit
+from app.models.admin import ChannelVisit, Contact, ContactClick, Platform, SiteVisit
 from app.schemas.base import SuccessExtra
 
 router = APIRouter()
@@ -97,6 +97,77 @@ async def list_site_visit_stats(
     visit_objs = await SiteVisit.filter(q).offset((page - 1) * page_size).limit(page_size).order_by("-visited_at", "-id")
     data = [await visit_obj.to_dict() for visit_obj in visit_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
+
+
+@router.get("/contact-click/list", summary="查看联系方式点击数据")
+async def list_contact_click_stats(
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量"),
+    keyword: str = Query("", description="平台、名称或联系内容关键字"),
+    contact_type: str = Query("", description="联系方式类型"),
+    status: str = Query("", description="状态 active/inactive/deleted"),
+    sort_field: str | None = Query(None, description="排序字段"),
+    sort_order: str | None = Query(None, description="排序方向 asc/desc"),
+):
+    contact_objs = await Contact.filter(is_deleted=False).all()
+    contact_map = {item.id: item for item in contact_objs}
+    count_rows = await ContactClick.all().group_by("contact_id").annotate(click_count=Count("id")).values(
+        "contact_id", "click_count"
+    )
+    snapshot_rows = await ContactClick.all().order_by("-clicked_at", "-id").values(
+        "contact_id",
+        "platform_snapshot",
+        "display_name_snapshot",
+        "contact_type_snapshot",
+        "contact_value_snapshot",
+    )
+
+    snapshot_map = {}
+    for item in snapshot_rows:
+        snapshot_map.setdefault(item["contact_id"], item)
+
+    count_map = {item["contact_id"]: item["click_count"] for item in count_rows}
+    contact_ids = set(contact_map) | set(count_map)
+    data = []
+    for contact_id in contact_ids:
+        contact_obj = contact_map.get(contact_id)
+        snapshot = snapshot_map.get(contact_id, {})
+        platform = contact_obj.platform if contact_obj else snapshot.get("platform_snapshot", "")
+        display_name = contact_obj.display_name if contact_obj else snapshot.get("display_name_snapshot", f"联系方式 #{contact_id}")
+        item_contact_type = contact_obj.contact_type if contact_obj else snapshot.get("contact_type_snapshot")
+        contact_value = contact_obj.contact_value if contact_obj else snapshot.get("contact_value_snapshot")
+        item_status = "deleted"
+        if contact_obj:
+            item_status = "active" if contact_obj.is_active else "inactive"
+
+        if keyword and keyword not in platform and keyword not in display_name and keyword not in str(contact_value or ""):
+            continue
+        if contact_type and contact_type != item_contact_type:
+            continue
+        if status and status != item_status:
+            continue
+
+        data.append(
+            {
+                "id": contact_obj.id if contact_obj else f"deleted-{contact_id}",
+                "contact_id": contact_id,
+                "platform": platform,
+                "display_name": display_name,
+                "contact_type": item_contact_type,
+                "contact_value": contact_value,
+                "click_count": count_map.get(contact_id, 0),
+                "status": item_status,
+            }
+        )
+
+    reverse = sort_order != "asc"
+    if sort_field in {"platform", "display_name", "contact_type", "status"}:
+        data.sort(key=lambda item: str(item[sort_field] or ""), reverse=reverse)
+    else:
+        data.sort(key=lambda item: (item["click_count"], item["contact_id"]), reverse=reverse)
+    total = len(data)
+    offset = (page - 1) * page_size
+    return SuccessExtra(data=data[offset : offset + page_size], total=total, page=page, page_size=page_size)
 
 
 @router.get("/product-click/list", summary="查看好物点击数据")

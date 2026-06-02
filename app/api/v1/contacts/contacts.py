@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from tortoise.expressions import Q
 
 from app.controllers.contact import contact_controller
+from app.models.admin import Contact
 from app.schemas.base import Success, SuccessExtra
 from app.schemas.contacts import ContactCreate, ContactUpdate
 
@@ -18,7 +19,7 @@ async def list_contact(
     sort_field: str | None = Query(None, description="排序字段"),
     sort_order: str | None = Query(None, description="排序方向 asc/desc"),
 ):
-    q = Q()
+    q = Q(is_deleted=False)
     if keyword:
         q &= Q(platform__contains=keyword) | Q(display_name__contains=keyword) | Q(contact_value__contains=keyword)
     if contact_type:
@@ -38,7 +39,9 @@ async def list_contact(
 
 @router.get("/get", summary="查看联系方式")
 async def get_contact(id: int = Query(..., description="联系方式ID")):
-    contact_obj = await contact_controller.get(id=id)
+    contact_obj = await Contact.filter(id=id, is_deleted=False).first()
+    if not contact_obj:
+        raise HTTPException(status_code=404, detail="Contact not found")
     return Success(data=await contact_obj.to_dict())
 
 

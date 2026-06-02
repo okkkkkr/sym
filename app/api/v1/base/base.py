@@ -24,6 +24,8 @@ from app.models.admin import (
     ChannelVisit,
     ChannelVisitDedup,
     Contact,
+    ContactClick,
+    ContactClickDedup,
     Menu,
     Platform,
     Product,
@@ -33,7 +35,13 @@ from app.models.admin import (
 )
 from app.schemas.base import Fail, Success
 from app.schemas.login import *
-from app.schemas.stats import TrackBrandSearchIn, TrackChannelVisitIn, TrackProductClickIn, TrackSiteVisitIn
+from app.schemas.stats import (
+    TrackBrandSearchIn,
+    TrackChannelVisitIn,
+    TrackContactClickIn,
+    TrackProductClickIn,
+    TrackSiteVisitIn,
+)
 from app.services.product_media_upload import product_media_upload_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
@@ -45,6 +53,7 @@ router = APIRouter()
 
 CATEGORY_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
 CHANNEL_VISIT_WINDOW = timedelta(minutes=30)
+CONTACT_CLICK_WINDOW = CHANNEL_VISIT_WINDOW
 NATURE_CUSTOM_NAME = "nature"
 
 
@@ -151,7 +160,7 @@ async def update_user_password(req_in: UpdatePassword):
 
 @router.get("/contacts", summary="查看启用的联系方式")
 async def get_active_contacts(contact_type: str = ""):
-    q = Q(is_active=True)
+    q = Q(is_active=True, is_deleted=False)
     if contact_type:
         q &= Q(contact_type=contact_type)
     _, contact_objs = await contact_controller.list(page=1, page_size=999, search=q, order=["order", "id"])
@@ -236,8 +245,8 @@ async def get_dashboard_overview():
         Category.filter(is_active=True).count(),
         Brand.all().count(),
         Brand.filter(is_active=True).count(),
-        Contact.all().count(),
-        Contact.filter(is_active=True).count(),
+        Contact.filter(is_deleted=False).count(),
+        Contact.filter(is_active=True, is_deleted=False).count(),
         Banner.all().count(),
         Banner.filter(is_active=True).count(),
         AuditLog.filter(created_at__range=[start_of_day, end_of_day]).count(),
@@ -349,6 +358,58 @@ async def track_channel_visit(payload: TrackChannelVisitIn):
             "visit_id": visit_obj.id,
             "custom_name": platform_obj.custom_name,
             "visited_at": visit_obj.visited_at.strftime(settings.DATETIME_FORMAT),
+        }
+    )
+
+
+@router.post("/track/contact-click", summary="上报前台联系方式点击")
+async def track_contact_click(payload: TrackContactClickIn):
+    contact_obj = await Contact.filter(id=payload.contact_id, is_active=True, is_deleted=False).first()
+    if not contact_obj:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    now = datetime.now(timezone.utc)
+    async with in_transaction() as connection:
+        dedup_obj = (
+            await ContactClickDedup.filter(
+                visitor_id=payload.visitor_id,
+                contact_id=contact_obj.id,
+            )
+            .using_db(connection)
+            .select_for_update()
+            .first()
+        )
+        if dedup_obj and now - dedup_obj.last_counted_at < CONTACT_CLICK_WINDOW:
+            return Success(data={"tracked": False, "contact_id": contact_obj.id})
+
+        if dedup_obj:
+            dedup_obj.last_counted_at = now
+            await dedup_obj.save(using_db=connection, update_fields=["last_counted_at"])
+        else:
+            await ContactClickDedup.create(
+                visitor_id=payload.visitor_id,
+                contact_id=contact_obj.id,
+                last_counted_at=now,
+                using_db=connection,
+            )
+
+        click_obj = await ContactClick.create(
+            visitor_id=payload.visitor_id,
+            contact_id=contact_obj.id,
+            platform_snapshot=contact_obj.platform,
+            display_name_snapshot=contact_obj.display_name,
+            contact_type_snapshot=contact_obj.contact_type,
+            contact_value_snapshot=contact_obj.contact_value,
+            link_url_snapshot=contact_obj.link_url,
+            using_db=connection,
+        )
+
+    return Success(
+        data={
+            "tracked": True,
+            "click_id": click_obj.id,
+            "contact_id": contact_obj.id,
+            "clicked_at": click_obj.clicked_at.strftime(settings.DATETIME_FORMAT),
         }
     )
 

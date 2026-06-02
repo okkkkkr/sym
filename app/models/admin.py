@@ -186,9 +186,35 @@ class Contact(BaseModel, TimestampMixin):
     qr_image_url = fields.CharField(max_length=500, null=True, description="二维码图片")
     order = fields.IntField(default=0, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
+    is_deleted = fields.BooleanField(default=False, description="是否已删除", index=True)
+    deleted_at = fields.DatetimeField(null=True, description="删除时间", index=True)
 
     class Meta:
         table = "contact"
+
+
+class ContactClick(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    contact_id = fields.BigIntField(description="联系方式ID", index=True)
+    platform_snapshot = fields.CharField(max_length=50, description="平台标识快照")
+    display_name_snapshot = fields.CharField(max_length=100, description="展示名称快照")
+    contact_type_snapshot = fields.CharField(max_length=30, null=True, description="联系方式类型快照", index=True)
+    contact_value_snapshot = fields.CharField(max_length=255, null=True, description="联系方式值快照")
+    link_url_snapshot = fields.CharField(max_length=500, null=True, description="跳转链接快照")
+    clicked_at = fields.DatetimeField(auto_now_add=True, description="点击时间", index=True)
+
+    class Meta:
+        table = "contact_click"
+
+
+class ContactClickDedup(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    contact_id = fields.BigIntField(description="联系方式ID", index=True)
+    last_counted_at = fields.DatetimeField(description="最后计数时间", index=True)
+
+    class Meta:
+        table = "contact_click_dedup"
+        unique_together = (("visitor_id", "contact_id"),)
 
 
 class Banner(BaseModel, TimestampMixin):

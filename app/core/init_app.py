@@ -389,6 +389,13 @@ async def init_menus():
             "icon": "carbon:chart-relationship",
             "component": "/data/channel-visit",
         },
+        {
+            "name": "联系方式点击数据",
+            "path": "contact-click",
+            "order": 6,
+            "icon": "material-symbols:contact-phone-outline",
+            "component": "/data/contact-click",
+        },
     ]
 
     for item in stats_children:
