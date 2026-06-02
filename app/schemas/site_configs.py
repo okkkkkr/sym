@@ -14,13 +14,13 @@ def validate_full_url(value: str, field_name: str) -> str:
 
 
 class SiteConfigUpdate(BaseModel):
-    logo_url: str = Field(default="", max_length=500, description="站点 Logo URL")
+    logo_key: str = Field(default="", max_length=500, description="站点 Logo 对象 Key")
     about_title: str = Field(default="", max_length=100, description="About 标题")
     about_lines: list[str] = Field(default_factory=list, description="About 文案段落")
     footer_disclaimer: str = Field(default="", max_length=500, description="底部声明")
     share_base_url: str = Field(default="", max_length=500, description="渠道分享基础链接")
 
-    @field_validator("logo_url", "about_title", "footer_disclaimer", mode="before")
+    @field_validator("logo_key", "about_title", "footer_disclaimer", mode="before")
     @classmethod
     def normalize_text(cls, value):
         return str(value or "").strip()
@@ -48,9 +48,9 @@ class SiteConfigLogoUploadTokenIn(BaseModel):
 
 
 class SiteConfigLogoDeleteIn(BaseModel):
-    logo_url: str = Field(default="", max_length=500, description="待删除的站点 Logo URL")
+    logo_key: str = Field(default="", max_length=500, description="待删除的站点 Logo 对象 Key")
 
-    @field_validator("logo_url", mode="before")
+    @field_validator("logo_key", mode="before")
     @classmethod
-    def normalize_logo_url(cls, value):
+    def normalize_logo_key(cls, value):
         return str(value or "").strip()

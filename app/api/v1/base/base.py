@@ -437,9 +437,9 @@ def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
         "detailBlocks": detail_description if isinstance(detail_description, list) else [],
         "category": category_key,
         "brandName": brand_name,
-        "coverImageUrl": product_media_upload_service.serialize_stored_url(product_dict.get("cover_image_url")),
-        "imageUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("image_urls") or []],
-        "videoUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("video_urls") or []],
+        "coverImageUrl": product_media_upload_service.serialize_object_key(product_dict.get("cover_image_key")),
+        "imageUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("image_keys") or []],
+        "videoUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("video_keys") or []],
         "clickCount": product_dict.get("click_count", 0),
     }
 

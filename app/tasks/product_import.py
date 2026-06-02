@@ -49,11 +49,9 @@ async def upload_media_files(product_name: str, file_paths: list[str], media_typ
     uploads: list[dict[str, str]] = []
     media_label = "视频" if media_type == "video" else "图片"
     for file_path in file_paths:
+        object_key = build_media_object_key(product_name, file_path, media_type)
         try:
-            url = await media_storage_service.upload_file(
-                file_path,
-                build_media_object_key(product_name, file_path, media_type),
-            )
+            await media_storage_service.upload_file(file_path, object_key)
         except HTTPException as exc:
             raise HTTPException(
                 status_code=exc.status_code,
@@ -64,7 +62,7 @@ async def upload_media_files(product_name: str, file_paths: list[str], media_typ
                 status_code=500,
                 detail=f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}",
             ) from exc
-        uploads.append({"path": file_path, "url": url})
+        uploads.append({"path": file_path, "object_key": object_key})
     return uploads
 
 
@@ -287,27 +285,27 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                     processed_count += 1
                     await product_import_task_item_controller.mark_skipped(item.id, message="任务已由用户取消")
                     break
-                image_urls = [item["url"] for item in image_uploads]
-                video_urls = [item["url"] for item in video_uploads]
-                cover_image_url = next(
+                image_keys = [item["object_key"] for item in image_uploads]
+                video_keys = [item["object_key"] for item in video_uploads]
+                cover_image_key = next(
                     (
-                        item["url"]
+                        item["object_key"]
                         for item in image_uploads
                         if os.path.abspath(item["path"]) == os.path.abspath(material_set.cover_image)
                     ),
                     None,
                 )
-                if cover_image_url is None and image_urls:
-                    cover_image_url = image_urls[0]
+                if cover_image_key is None and image_keys:
+                    cover_image_key = image_keys[0]
                 payload = {
                     "category_id": row.category_id,
                     "brand_id": row.brand_id,
                     "name": row.name,
                     "desc": row.desc,
                     "detail_description": row.detail_description,
-                    "cover_image_url": cover_image_url,
-                    "image_urls": image_urls,
-                    "video_urls": video_urls,
+                    "cover_image_key": cover_image_key,
+                    "image_keys": image_keys,
+                    "video_keys": video_keys,
                     "status": row.status,
                     "order": row.order,
                 }

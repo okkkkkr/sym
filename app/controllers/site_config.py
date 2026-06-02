@@ -9,25 +9,23 @@ def serialize_site_config(site_config_obj: SiteConfig | None, include_storage: b
     if not site_config_obj:
         data = {
             "logo_url": "",
+            "logo_key": "",
             "about_title": "",
             "about_lines": [],
             "footer_disclaimer": "",
             "share_base_url": "",
         }
-        if include_storage:
-            data["logo_storage_url"] = ""
         return data
 
-    logo_storage_url = str(site_config_obj.logo_url or "").strip()
+    logo_key = str(site_config_obj.logo_key or "").strip()
     data = {
-        "logo_url": product_media_upload_service.serialize_stored_url(logo_storage_url),
+        "logo_url": product_media_upload_service.serialize_object_key(logo_key),
+        "logo_key": logo_key,
         "about_title": str(site_config_obj.about_title or "").strip(),
         "about_lines": [str(item).strip() for item in site_config_obj.about_lines or [] if str(item).strip()],
         "footer_disclaimer": str(site_config_obj.footer_disclaimer or "").strip(),
         "share_base_url": str(site_config_obj.share_base_url or "").strip(),
     }
-    if include_storage:
-        data["logo_storage_url"] = logo_storage_url
     return data
 
 
@@ -41,24 +39,22 @@ class SiteConfigController(CRUDBase[SiteConfig, SiteConfigUpdate, SiteConfigUpda
     async def update_singleton(self, obj_in: SiteConfigUpdate) -> SiteConfig:
         site_config_obj = await self.get_singleton()
         payload = obj_in.model_dump()
-        previous_logo_url = str(site_config_obj.logo_url or "").strip() if site_config_obj else ""
+        previous_logo_key = str(site_config_obj.logo_key or "").strip() if site_config_obj else ""
         if site_config_obj:
             site_config_obj.update_from_dict(payload)
             await site_config_obj.save()
         else:
             site_config_obj = await self.model.create(**payload)
 
-        logo_url = str(site_config_obj.logo_url or "").strip()
-        await self.delete_logo_file(previous_logo_url, exclude_logo_url=logo_url)
+        logo_key = str(site_config_obj.logo_key or "").strip()
+        await self.delete_logo_file(previous_logo_key, exclude_logo_key=logo_key)
         return site_config_obj
 
-    async def delete_logo_file(self, logo_url: str, exclude_logo_url: str = "") -> None:
-        normalized_logo_url = str(logo_url or "").strip()
-        if not normalized_logo_url or normalized_logo_url == str(exclude_logo_url or "").strip():
+    async def delete_logo_file(self, logo_key: str, exclude_logo_key: str = "") -> None:
+        normalized_logo_key = str(logo_key or "").strip()
+        if not normalized_logo_key or normalized_logo_key == str(exclude_logo_key or "").strip():
             return
-        if not product_media_upload_service.extract_object_key(normalized_logo_url):
-            return
-        await storage_service.delete_file(normalized_logo_url)
+        await storage_service.delete_file(normalized_logo_key)
 
 
 site_config_controller = SiteConfigController()

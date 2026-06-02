@@ -110,7 +110,7 @@ class Platform(BaseModel, TimestampMixin):
 
 
 class SiteConfig(BaseModel, TimestampMixin):
-    logo_url = fields.CharField(max_length=500, default="", description="站点 Logo URL")
+    logo_key = fields.CharField(max_length=500, default="", description="站点 Logo 对象 Key")
     about_title = fields.CharField(max_length=100, default="", description="About 标题")
     about_lines = fields.JSONField(default=list, description="About 文案段落")
     footer_disclaimer = fields.CharField(max_length=500, default="", description="底部声明")
@@ -211,9 +211,9 @@ class Product(BaseModel, TimestampMixin):
     product_code = fields.CharField(max_length=64, null=True, description="好物识别码", index=True)
     desc = fields.CharField(max_length=255, null=True, description="好物简介")
     detail_description = fields.JSONField(default=list, description="结构化详情")
-    cover_image_url = fields.CharField(max_length=500, description="封面图")
-    image_urls = fields.JSONField(default=list, description="图片列表")
-    video_urls = fields.JSONField(default=list, description="视频列表")
+    cover_image_key = fields.CharField(max_length=500, description="封面图对象 Key")
+    image_keys = fields.JSONField(default=list, description="图片对象 Key 列表")
+    video_keys = fields.JSONField(default=list, description="视频对象 Key 列表")
     click_count = fields.IntField(default=0, description="点击量", index=True)
     status = fields.BooleanField(default=True, description="是否上架", index=True)
     order = fields.IntField(default=0, description="排序", index=True)

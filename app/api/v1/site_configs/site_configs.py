@@ -24,7 +24,7 @@ async def get_site_logo_upload_token(payload: SiteConfigLogoUploadTokenIn, curre
 @router.post("/logo/delete", summary="删除站点 Logo 文件")
 async def delete_site_logo(payload: SiteConfigLogoDeleteIn, current_user: User = DependAuth):
     _ = current_user
-    await site_config_controller.delete_logo_file(payload.logo_url)
+    await site_config_controller.delete_logo_file(payload.logo_key)
     return Success(msg="Deleted Successfully")
 
 

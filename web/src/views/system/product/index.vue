@@ -110,7 +110,7 @@ const rules = {
   cover_file_list: {
     required: true,
     validator: (_, value) => {
-      if (buildUploadUrls(value).length) return true
+      if (buildUploadKeys(value).length) return true
       return new Error('请上传封面图')
     },
     trigger: ['change', 'blur'],
@@ -228,7 +228,7 @@ function normalizeUploadFileList(fileList = [], prefix = 'file') {
     })
 }
 
-function buildUploadUrls(fileList = []) {
+function buildUploadKeys(fileList = []) {
   return normalizeUploadFileList(fileList)
     .filter((item) => !item?.status || item.status === 'finished')
     .map((item) => String(item.rawUrl || item.url || item.thumbnailUrl || '').trim())
@@ -247,9 +247,8 @@ function applyUploadedFile(fieldName, prefix, file, url) {
   if (url && isImageUploadPrefix(prefix)) {
     file.thumbnailUrl = url
   }
-  file.rawUrl = url
   if (!file.name) {
-    file.name = getFileNameFromUrl(url, prefix)
+    file.name = getFileNameFromUrl(file.rawUrl || url, prefix)
   }
   Object.assign(file, decorateUploadFile(file, prefix))
   syncUploadField(fieldName, prefix)
@@ -292,8 +291,8 @@ function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
         xhr.send(formData)
       })
 
+      file.rawUrl = credential.data.object_key
       applyUploadedFile(fieldName, prefix, file, credential.data.preview_url || credential.data.url)
-      file.rawUrl = credential.data.url
       onFinish()
     } catch (error) {
       syncUploadField(fieldName, prefix)
@@ -531,10 +530,10 @@ function openEditModal(row) {
     cover_file_list: buildPresetUploadList(
       row.cover_image_url ? [row.cover_image_url] : [],
       'cover',
-      row.cover_image_storage_url ? [row.cover_image_storage_url] : []
+      row.cover_image_key ? [row.cover_image_key] : []
     ),
-    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_storage_urls || []),
-    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_storage_urls || []),
+    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_keys || []),
+    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_keys || []),
     click_count: row.click_count || 0,
     status: row.status,
     order: row.order || 0,
@@ -578,8 +577,8 @@ function buildProductPayload() {
     throw new Error('detail_description 需要使用 JSON 数组结构')
   }
 
-  const coverUrls = buildUploadUrls(modalForm.value.cover_file_list)
-  if (!coverUrls.length) {
+  const coverKeys = buildUploadKeys(modalForm.value.cover_file_list)
+  if (!coverKeys.length) {
     throw new Error('请上传封面图')
   }
 
@@ -591,9 +590,9 @@ function buildProductPayload() {
     product_code_custom: String(modalForm.value.product_code_custom || '').trim(),
     desc: modalForm.value.desc.trim(),
     detail_description: detailDescription,
-    cover_image_url: coverUrls[0],
-    image_urls: buildUploadUrls(modalForm.value.image_file_list),
-    video_urls: buildUploadUrls(modalForm.value.video_file_list),
+    cover_image_key: coverKeys[0],
+    image_keys: buildUploadKeys(modalForm.value.image_file_list),
+    video_keys: buildUploadKeys(modalForm.value.video_file_list),
     click_count: Number(modalForm.value.click_count || 0),
     status: !!modalForm.value.status,
     order: Number(modalForm.value.order || 0),
@@ -697,9 +696,9 @@ async function toggleStatus(row, nextValue) {
     product_code_custom: row.product_code_custom || '',
     desc: row.desc || '',
     detail_description: row.detail_description || [],
-    cover_image_url: row.cover_image_storage_url || row.cover_image_url,
-    image_urls: row.image_storage_urls || row.image_urls || [],
-    video_urls: row.video_storage_urls || row.video_urls || [],
+    cover_image_key: row.cover_image_key || '',
+    image_keys: row.image_keys || [],
+    video_keys: row.video_keys || [],
     click_count: row.click_count || 0,
     status: nextValue,
     order: row.order || 0,

@@ -45,7 +45,7 @@ const saveDisabled = computed(
 
 function createInitialForm() {
   return {
-    logo_url: '',
+    logo_key: '',
     about_title: '',
     about_text: '',
     footer_disclaimer: '',
@@ -55,7 +55,7 @@ function createInitialForm() {
 
 function createInitialPayload() {
   return {
-    logo_url: '',
+    logo_key: '',
     about_title: '',
     about_lines: [],
     footer_disclaimer: '',
@@ -107,9 +107,9 @@ function normalizeLogoFileList(fileList = []) {
 }
 
 function applySiteConfig(data = {}) {
-  savedLogoUrl.value = data.logo_storage_url || data.logo_url || ''
+  savedLogoUrl.value = data.logo_key || ''
   form.value = {
-    logo_url: savedLogoUrl.value,
+    logo_key: savedLogoUrl.value,
     about_title: data.about_title || '',
     about_text: Array.isArray(data.about_lines) ? data.about_lines.join('\n') : '',
     footer_disclaimer: data.footer_disclaimer || '',
@@ -123,7 +123,7 @@ function applySiteConfig(data = {}) {
 
 function buildPayload() {
   return {
-    logo_url: form.value.logo_url.trim(),
+    logo_key: form.value.logo_key.trim(),
     about_title: form.value.about_title.trim(),
     about_lines: form.value.about_text
       .split('\n')
@@ -136,16 +136,16 @@ function buildPayload() {
 
 function syncLogoValue(fileList = []) {
   logoFileList.value = normalizeLogoFileList(fileList).slice(-1)
-  form.value.logo_url = logoFileList.value[0]?.rawUrl || ''
+  form.value.logo_key = logoFileList.value[0]?.rawUrl || ''
 }
 
-async function deleteUnusedLogo(logoUrl) {
-  const normalizedLogoUrl = String(logoUrl || '').trim()
-  if (!normalizedLogoUrl || normalizedLogoUrl === savedLogoUrl.value) {
+async function deleteUnusedLogo(logoKey) {
+  const normalizedLogoKey = String(logoKey || '').trim()
+  if (!normalizedLogoKey || normalizedLogoKey === savedLogoUrl.value) {
     return
   }
   try {
-    await api.deleteSiteConfigLogo({ logo_url: normalizedLogoUrl })
+    await api.deleteSiteConfigLogo({ logo_key: normalizedLogoKey })
   } catch (error) {
     console.error('删除未使用的 Logo 失败', error)
   }
@@ -163,7 +163,7 @@ async function loadSiteConfig() {
 
 async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
   uploadingLogo.value = true
-  const replacedLogoUrl = form.value.logo_url.trim()
+  const replacedLogoKey = form.value.logo_key.trim()
   try {
     if (!file?.file) {
       throw new Error('未找到待上传图片')
@@ -200,13 +200,13 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
 
     file.url = credential.data.preview_url || credential.data.url
     file.thumbnailUrl = file.url
-    file.rawUrl = credential.data.url
+    file.rawUrl = credential.data.object_key
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)
     }
     syncLogoValue([file])
-    if (replacedLogoUrl && replacedLogoUrl !== file.rawUrl) {
-      await deleteUnusedLogo(replacedLogoUrl)
+    if (replacedLogoKey && replacedLogoKey !== file.rawUrl) {
+      await deleteUnusedLogo(replacedLogoKey)
     }
     onFinish()
   } catch (error) {
@@ -221,10 +221,10 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
 }
 
 function handleLogoFileListChange(fileList) {
-  const removedLogoUrl = !fileList.length ? form.value.logo_url.trim() : ''
+  const removedLogoKey = !fileList.length ? form.value.logo_key.trim() : ''
   syncLogoValue(fileList)
-  if (removedLogoUrl) {
-    deleteUnusedLogo(removedLogoUrl)
+  if (removedLogoKey) {
+    deleteUnusedLogo(removedLogoKey)
   }
 }
 
@@ -261,7 +261,7 @@ onMounted(() => {
 
     <NSpin :show="loading">
       <NForm ref="formRef" label-placement="left" :label-width="120" :model="form" :rules="rules">
-        <NFormItem label="Logo" path="logo_url">
+        <NFormItem label="Logo" path="logo_key">
           <NUpload
             v-model:file-list="logoFileList"
             accept="image/*"

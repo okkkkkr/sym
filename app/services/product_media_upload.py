@@ -202,12 +202,14 @@ class ProductMediaUploadService:
             return self.build_private_url(object_key, expires_in=expires_in)
         return self.build_public_url(object_key)
 
-    def extract_object_key(self, stored_url: str | None) -> str | None:
-        if not stored_url:
+    def extract_object_key(self, stored_value: str | None) -> str | None:
+        if not stored_value:
             return None
-        normalized = str(stored_url).strip()
+        normalized = str(stored_value).strip()
         if not normalized:
             return None
+        if not normalized.startswith(("http://", "https://")):
+            return normalized.lstrip("/")
         if not str(settings.QINIU_DOMAIN or "").strip():
             return None
         public_domain = self._normalize_public_domain()
@@ -219,24 +221,26 @@ class ProductMediaUploadService:
             return parsed_url.path.lstrip("/").split("?", 1)[0]
         return None
 
-    def serialize_stored_url(self, stored_url: str | None, expires_in: int | None = None) -> str:
-        object_key = self.extract_object_key(stored_url)
+    def serialize_object_key(self, stored_value: str | None, expires_in: int | None = None) -> str:
+        object_key = self.extract_object_key(stored_value)
         if not object_key:
-            return str(stored_url or "")
+            return str(stored_value or "")
         return self.build_access_url(object_key, expires_in=expires_in)
+
+    def serialize_stored_url(self, stored_value: str | None, expires_in: int | None = None) -> str:
+        return self.serialize_object_key(stored_value, expires_in=expires_in)
 
     def create_upload_credentials(self, file_name: str, media_type: str, content_type: str | None = None) -> dict:
         self._validate_settings()
         media_rule = self._validate_media_type(media_type)
         self._validate_file(file_name, content_type, media_rule)
         object_key = self._build_object_key(media_type, file_name)
-        stored_url = self.build_public_url(object_key)
         return {
             "upload_token": self._build_upload_token(object_key),
             "upload_url": self._normalize_upload_host(),
             "object_key": object_key,
-            "url": stored_url,
-            "preview_url": self.serialize_stored_url(stored_url),
+            "url": self.build_public_url(object_key),
+            "preview_url": self.build_access_url(object_key),
             "media_type": media_type,
         }
 

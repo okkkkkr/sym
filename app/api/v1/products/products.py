@@ -24,17 +24,17 @@ async def get_product_media_upload_token(payload: ProductMediaUploadTokenIn, cur
 
 async def serialize_product_payload(product_obj):
     product_data = await product_obj.to_dict()
-    product_data["cover_image_storage_url"] = product_data.get("cover_image_url") or ""
-    product_data["image_storage_urls"] = list(product_data.get("image_urls") or [])
-    product_data["video_storage_urls"] = list(product_data.get("video_urls") or [])
-    product_data["cover_image_url"] = product_media_upload_service.serialize_stored_url(product_data.get("cover_image_url"))
+    product_data["cover_image_key"] = product_data.get("cover_image_key") or ""
+    product_data["image_keys"] = list(product_data.get("image_keys") or [])
+    product_data["video_keys"] = list(product_data.get("video_keys") or [])
+    product_data["cover_image_url"] = product_media_upload_service.serialize_object_key(product_data.get("cover_image_key"))
     product_data["image_urls"] = [
-        product_media_upload_service.serialize_stored_url(item)
-        for item in product_data.get("image_urls") or []
+        product_media_upload_service.serialize_object_key(item)
+        for item in product_data.get("image_keys") or []
     ]
     product_data["video_urls"] = [
-        product_media_upload_service.serialize_stored_url(item)
-        for item in product_data.get("video_urls") or []
+        product_media_upload_service.serialize_object_key(item)
+        for item in product_data.get("video_keys") or []
     ]
     product_data["product_code_custom"] = product_controller.extract_product_code_custom(product_data.get("product_code"))
     product_data["tags"] = [
