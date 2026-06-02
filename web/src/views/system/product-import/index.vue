@@ -48,7 +48,6 @@ const uploadButtonText = computed(() => {
   return '开始上传'
 })
 const pauseButtonText = computed(() => (pauseRequested.value ? '继续上传' : '暂停上传'))
-const uploadProgressStatus = computed(() => (uploadPercent.value >= 100 ? 'success' : 'info'))
 const currentTaskPercent = computed(() => {
   if (
     systemTask.value?.status === 'uploading' &&
@@ -556,14 +555,6 @@ onBeforeUnmount(() => {
               </NButton>
             </NSpace>
           </div>
-          <NProgress
-            v-if="uploadLoading || uploadPercent > 0"
-            :status="uploadProgressStatus"
-            class="upload-progress"
-            type="line"
-            :percentage="uploadPercent"
-            indicator-placement="inside"
-          />
         </NSpace>
       </NCard>
 
