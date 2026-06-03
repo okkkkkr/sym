@@ -59,6 +59,12 @@ PRODUCT_MEDIA_TYPE_RULES = {
         "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
         "mime_prefix": "image/",
     },
+    "home_layout": {
+        "prefix": "home-layout",
+        "file_prefix": "layout",
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "mime_prefix": "image/",
+    },
     "video": {
         "prefix": "items/videos",
         "file_prefix": "vid",

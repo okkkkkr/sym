@@ -10,6 +10,7 @@ from app.controllers.brand import brand_controller
 from app.controllers.banner import banner_controller
 from app.controllers.category import category_controller
 from app.controllers.contact import contact_controller
+from app.controllers.home_layout import home_layout_controller
 from app.controllers.product import product_controller
 from app.controllers.site_config import serialize_site_config, site_config_controller
 from app.controllers.user import user_controller
@@ -181,6 +182,11 @@ async def get_active_banners():
 @router.get("/site-config", summary="查看公开站点配置")
 async def get_public_site_config():
     return Success(data=serialize_site_config(await site_config_controller.get_singleton()))
+
+
+@router.get("/home-layout", summary="查看已发布首页装修")
+async def get_public_home_layout():
+    return Success(data=await home_layout_controller.get_current_data())
 
 
 def serialize_dashboard_product(product_obj):

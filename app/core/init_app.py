@@ -330,6 +330,13 @@ async def init_menus():
             "icon": "material-symbols:settings-suggest-outline",
             "component": "/system/site-config",
         },
+        {
+            "name": "首页装修",
+            "path": "home-layout",
+            "order": 15,
+            "icon": "material-symbols:view-quilt-outline",
+            "component": "/system/home-layout",
+        },
     ]
 
     for item in business_children:

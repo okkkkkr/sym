@@ -8,6 +8,13 @@ import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories, resolveCategoryKey } from '../../services/catalog'
 import { fetchActiveContacts } from '../../services/contacts'
 
+const props = defineProps({
+  showCategories: {
+    type: Boolean,
+    default: true,
+  },
+})
+
 const route = useRoute()
 const isSmallScreen = ref(false)
 const categories = ref([])
@@ -50,6 +57,7 @@ const overflowCategories = computed(() => {
 })
 
 const selectedKeys = computed(() => (route.path === '/sym' ? [currentCategory.value] : []))
+const menuVisible = computed(() => props.showCategories && categories.value.length > 0)
 
 function categoryLink(categoryKey) {
   return { path: '/sym', query: { category: categoryKey } }
@@ -74,13 +82,15 @@ onMounted(() => {
 
   loadSiteConfig().catch(() => {})
 
-  fetchCatalogCategories()
-    .then((data) => {
-      categories.value = data
-    })
-    .catch(() => {
-      categories.value = []
-    })
+  if (props.showCategories) {
+    fetchCatalogCategories()
+      .then((data) => {
+        categories.value = data
+      })
+      .catch(() => {
+        categories.value = []
+      })
+  }
 
   fetchActiveContacts()
     .then((data) => {
@@ -128,7 +138,13 @@ onBeforeUnmount(() => {
         </span>
       </RouterLink>
 
-      <a-menu mode="horizontal" :selected-keys="selectedKeys" trigger-sub-menu-action="click" class="main-nav__menu">
+      <a-menu
+        v-if="menuVisible"
+        mode="horizontal"
+        :selected-keys="selectedKeys"
+        trigger-sub-menu-action="click"
+        class="main-nav__menu"
+      >
         <a-menu-item v-for="category in primaryCategories" :key="category.key">
           <RouterLink :to="categoryLink(category.key)" active-class="main-nav__route-state" exact-active-class="main-nav__route-state" class="main-nav__menu-link" :class="{ 'is-active': isActiveCategory(category.key) }">{{ category.name }}</RouterLink>
         </a-menu-item>
@@ -238,6 +254,10 @@ onBeforeUnmount(() => {
   min-width: 0;
   background: transparent;
   border-bottom: 0;
+}
+
+.main-nav__menu:empty {
+  display: none;
 }
 
 :deep(.main-nav__menu .ant-menu-overflow) {
