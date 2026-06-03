@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import mimetypes
+import random
 import secrets
 from pathlib import Path
 from urllib import request
@@ -15,8 +16,8 @@ from scripts.mock_home_layout import build_mock_payload
 
 
 IMAGE_DIR = Path(settings.BASE_DIR) / "tmp" / "images"
-SINGLE_IMAGE_NAME = "single_image.jpg"
-MULTI_IMAGE_PATTERN = "multi_*.png"
+SINGLE_IMAGE_NAME = "single_img.jpg"
+MULTI_IMAGE_PATTERN = "img_*.png"
 
 
 def encode_multipart_formdata(fields: dict[str, str], file_path: Path, file_field: str = "file") -> tuple[bytes, str]:
@@ -77,35 +78,19 @@ def upload_to_qiniu(file_path: Path) -> str:
     return credential["object_key"]
 
 
-def module_image_plan(multi_images: list[Path]) -> dict[str, list[Path]]:
-    return {
-        "grid_4": [multi_images[0], multi_images[1], multi_images[2], multi_images[3]],
-        "grid_2": [multi_images[4], multi_images[5]],
-        "grid_8": [
-            multi_images[0],
-            multi_images[1],
-            multi_images[2],
-            multi_images[3],
-            multi_images[4],
-            multi_images[5],
-            multi_images[6],
-            multi_images[7],
-        ],
-        "carousel": [multi_images[6], multi_images[7], multi_images[0]],
-        "horizontal_list": [multi_images[1], multi_images[2], multi_images[3], multi_images[4], multi_images[5]],
-    }
+def pick_module_images(module_type: str, item_count: int, multi_images: list[Path]) -> list[Path]:
+    if item_count > len(multi_images):
+        raise ValueError(f"Module {module_type} needs {item_count} images, but only {len(multi_images)} are available")
+    return random.sample(multi_images, item_count)
 
 
 def replace_images(payload: dict, single_image: Path, multi_images: list[Path]) -> dict:
-    plan = module_image_plan(multi_images)
-    single_uploaded_key = upload_to_qiniu(single_image)
-
     for module in payload["modules"]:
         if module["type"] == "single_image":
-            module["items"][0]["image"] = single_uploaded_key
+            module["items"][0]["image"] = upload_to_qiniu(single_image)
             continue
 
-        source_images = plan[module["type"]]
+        source_images = pick_module_images(module["type"], len(module["items"]), multi_images)
         for item, source_image in zip(module["items"], source_images):
             item["image"] = upload_to_qiniu(source_image)
     return payload

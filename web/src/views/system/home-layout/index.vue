@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -32,25 +32,6 @@ const moduleTypeOptions = [
   { label: '水平滑动列表', value: 'horizontal_list' },
 ]
 
-const singleImageRatioOptions = [
-  { label: '16:9', value: '16:9' },
-  { label: '4:3', value: '4:3' },
-  { label: '3:4', value: '3:4' },
-  { label: '1:1', value: '1:1' },
-  { label: '21:9', value: '21:9' },
-]
-
-const singleImageTextPositionOptions = [
-  { label: '居中', value: 'center' },
-  { label: '左侧', value: 'left' },
-  { label: '右侧', value: 'right' },
-  { label: '左上', value: 'top-left' },
-  { label: '右上', value: 'top-right' },
-  { label: '左下', value: 'bottom-left' },
-  { label: '右下', value: 'bottom-right' },
-  { label: '底部居中', value: 'bottom-center' },
-]
-
 const fixedItemCounts = {
   single_image: 1,
   grid_2: 2,
@@ -69,6 +50,7 @@ const publishing = ref(false)
 const selectedModuleIndex = ref(-1)
 const pendingModuleType = ref('single_image')
 const sidebarExpandedNames = ref(['common-config', 'module-list'])
+const itemExpandedNames = ref([])
 const draftPayload = ref('')
 const publishedPayload = ref('')
 const hasSavedDraftToPublish = ref(false)
@@ -121,7 +103,7 @@ function createItem(index = 0) {
 
 function createConfig(type) {
   if (type === 'single_image') {
-    return { ratio: '16:9', text_position: 'center', overlay: true }
+    return { overlay: true }
   }
   if (type === 'carousel') {
     return { autoplay: true, interval: 3000, show_dots: true }
@@ -295,6 +277,7 @@ async function loadPage() {
     draftPayload.value = JSON.stringify(buildComparablePayload())
     hasSavedDraftToPublish.value = !!draftResponse.data?.has_draft_to_publish
     selectedModuleIndex.value = layout.value.modules.length ? 0 : -1
+    syncItemExpandedNames()
   } finally {
     loading.value = false
   }
@@ -375,8 +358,6 @@ function buildComparablePayload(source = layout.value) {
 function sanitizeConfig(module) {
   if (module.type === 'single_image') {
     return {
-      ratio: module.config.ratio || '16:9',
-      text_position: module.config.text_position || 'center',
       overlay: !!module.config.overlay,
     }
   }
@@ -395,6 +376,7 @@ function handleAddModule() {
   layout.value.modules.push(module)
   reindexModules()
   selectedModuleIndex.value = layout.value.modules.length - 1
+  syncItemExpandedNames()
 }
 
 function handleRemoveModule(index) {
@@ -402,9 +384,11 @@ function handleRemoveModule(index) {
   reindexModules()
   if (!layout.value.modules.length) {
     selectedModuleIndex.value = -1
+    syncItemExpandedNames()
     return
   }
   selectedModuleIndex.value = Math.min(index, layout.value.modules.length - 1)
+  syncItemExpandedNames()
 }
 
 function moveModule(index, direction) {
@@ -421,18 +405,21 @@ function handleModuleTypeChange(value) {
   selectedModule.value.type = value
   selectedModule.value.config = createConfig(value)
   ensureModuleStructure(selectedModule.value)
+  syncItemExpandedNames()
 }
 
 function handleAddItem() {
   if (!selectedModule.value || fixedItemCounts[selectedModule.value.type]) return
   selectedModule.value.items.push(createItem(selectedModule.value.items.length))
   reindexItems(selectedModule.value)
+  syncItemExpandedNames()
 }
 
 function handleRemoveItem(index) {
   if (!selectedModule.value || selectedModule.value.items.length === 1) return
   selectedModule.value.items.splice(index, 1)
   reindexItems(selectedModule.value)
+  syncItemExpandedNames()
 }
 
 function moveItem(index, direction) {
@@ -442,6 +429,13 @@ function moveItem(index, direction) {
   const [item] = selectedModule.value.items.splice(index, 1)
   selectedModule.value.items.splice(targetIndex, 0, item)
   reindexItems(selectedModule.value)
+  syncItemExpandedNames()
+}
+
+function syncItemExpandedNames() {
+  itemExpandedNames.value = selectedModule.value
+    ? selectedModule.value.items.map((_, index) => `item-${index}`)
+    : []
 }
 
 function syncItemImageValue(item, fileList = []) {
@@ -508,6 +502,7 @@ async function handleSave() {
   try {
     const response = await api.saveHomeLayoutDraft(buildPayload())
     layout.value = normalizeLayout(response.data)
+    syncItemExpandedNames()
     draftPayload.value = JSON.stringify(buildComparablePayload())
     hasSavedDraftToPublish.value = !!response.data?.has_draft_to_publish
     $message.success('首页装修草稿已保存')
@@ -544,6 +539,10 @@ function formatPublishedMeta() {
   }
   return `当前发布版本 v${currentPublished.value.version}${currentPublished.value.published_at ? `，发布时间 ${currentPublished.value.published_at}` : ''}`
 }
+
+watch(selectedModuleIndex, () => {
+  syncItemExpandedNames()
+})
 
 onMounted(() => {
   loadPage()
@@ -682,18 +681,6 @@ onMounted(() => {
             <h3>模块配置</h3>
             <div class="home-layout-admin__grid">
               <template v-if="selectedModule.type === 'single_image'">
-                <NFormItem label="图片比例">
-                  <NSelect
-                    v-model:value="selectedModule.config.ratio"
-                    :options="singleImageRatioOptions"
-                  />
-                </NFormItem>
-                <NFormItem label="文案位置">
-                  <NSelect
-                    v-model:value="selectedModule.config.text_position"
-                    :options="singleImageTextPositionOptions"
-                  />
-                </NFormItem>
                 <NFormItem label="显示蒙层">
                   <NSwitch v-model:value="selectedModule.config.overlay" />
                 </NFormItem>
@@ -716,105 +703,111 @@ onMounted(() => {
           <div class="home-layout-admin__action-card">
             <div class="home-layout-admin__section-header">
               <h3>内容项</h3>
-              <NButton
-                v-if="!fixedItemCounts[selectedModule.type]"
-                type="primary"
-                secondary
-                @click="handleAddItem"
-              >
-                新增内容项
-              </NButton>
+                <NButton
+                  v-if="!fixedItemCounts[selectedModule.type]"
+                  type="primary"
+                  secondary
+                  @click="handleAddItem"
+                >
+                  新增内容项
+                </NButton>
             </div>
 
             <div class="home-layout-admin__items">
-              <NCard
-                v-for="(item, index) in selectedModule.items"
-                :key="`${selectedModule.type}-${index}`"
-                size="small"
-                class="home-layout-admin__item-card"
+              <NCollapse
+                v-model:expanded-names="itemExpandedNames"
+                class="home-layout-admin__item-collapse"
+                arrow-placement="right"
               >
-                <template #header>
-                  <div class="home-layout-admin__item-header">
-                    <span>内容项 {{ index + 1 }}</span>
-                    <div class="home-layout-admin__module-buttons">
-                      <NTooltip trigger="hover">
-                        <template #trigger>
-                          <NButton quaternary circle size="small" @click="moveItem(index, -1)">
-                            <TheIcon icon="tabler:arrow-up" :size="16" />
-                          </NButton>
-                        </template>
-                        上移
-                      </NTooltip>
-                      <NTooltip trigger="hover">
-                        <template #trigger>
-                          <NButton quaternary circle size="small" @click="moveItem(index, 1)">
-                            <TheIcon icon="tabler:arrow-down" :size="16" />
-                          </NButton>
-                        </template>
-                        下移
-                      </NTooltip>
-                      <NButton
-                        v-if="!fixedItemCounts[selectedModule.type]"
-                        quaternary
-                        circle
-                        size="small"
-                        type="error"
-                        @click="handleRemoveItem(index)"
-                      >
-                        <TheIcon icon="material-symbols:delete-outline" :size="17" />
-                      </NButton>
+                <NCollapseItem
+                  v-for="(item, index) in selectedModule.items"
+                  :key="`${selectedModule.type}-${index}`"
+                  :name="`item-${index}`"
+                  class="home-layout-admin__item-card"
+                >
+                  <template #header>
+                    <div class="home-layout-admin__item-header">
+                      <span>内容项 {{ index + 1 }}</span>
+                      <div class="home-layout-admin__module-buttons">
+                        <NTooltip trigger="hover">
+                          <template #trigger>
+                            <NButton quaternary circle size="small" @click.stop="moveItem(index, -1)">
+                              <TheIcon icon="tabler:arrow-up" :size="16" />
+                            </NButton>
+                          </template>
+                          上移
+                        </NTooltip>
+                        <NTooltip trigger="hover">
+                          <template #trigger>
+                            <NButton quaternary circle size="small" @click.stop="moveItem(index, 1)">
+                              <TheIcon icon="tabler:arrow-down" :size="16" />
+                            </NButton>
+                          </template>
+                          下移
+                        </NTooltip>
+                        <NButton
+                          v-if="!fixedItemCounts[selectedModule.type]"
+                          quaternary
+                          circle
+                          size="small"
+                          type="error"
+                          @click.stop="handleRemoveItem(index)"
+                        >
+                          <TheIcon icon="material-symbols:delete-outline" :size="17" />
+                        </NButton>
+                      </div>
                     </div>
+                  </template>
+
+                  <div class="home-layout-admin__grid">
+                    <NFormItem label="图片" class="home-layout-admin__full">
+                      <NUpload
+                        v-model:file-list="item.image_file_list"
+                        accept="image/*"
+                        :custom-request="(options) => handleItemImageUpload(options, item)"
+                        list-type="image-card"
+                        :max="1"
+                        @update:file-list="(fileList) => handleItemImageFileListChange(item, fileList)"
+                      >
+                        <NIcon v-if="item.image_file_list.length < 1" size="40">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                            <path
+                              d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
+                            />
+                          </svg>
+                        </NIcon>
+                      </NUpload>
+                    </NFormItem>
+                    <NFormItem label="主文案">
+                      <NInput v-model:value="item.title" placeholder="主标题或文案" />
+                    </NFormItem>
+                    <NFormItem label="角标">
+                      <NInput v-model:value="item.badge" placeholder="如 Hot / New" />
+                    </NFormItem>
+                    <NFormItem label="辅助文案" class="home-layout-admin__full">
+                      <NInput v-model:value="item.description" placeholder="辅助说明文案" />
+                    </NFormItem>
                   </div>
-                </template>
 
-                <div class="home-layout-admin__grid">
-                  <NFormItem label="图片" class="home-layout-admin__full">
-                    <NUpload
-                      v-model:file-list="item.image_file_list"
-                      accept="image/*"
-                      :custom-request="(options) => handleItemImageUpload(options, item)"
-                      list-type="image-card"
-                      :max="1"
-                      @update:file-list="(fileList) => handleItemImageFileListChange(item, fileList)"
-                    >
-                      <NIcon v-if="item.image_file_list.length < 1" size="40">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                          <path
-                            d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
-                          />
-                        </svg>
-                      </NIcon>
-                    </NUpload>
-                  </NFormItem>
-                  <NFormItem label="主文案">
-                    <NInput v-model:value="item.title" placeholder="主标题或文案" />
-                  </NFormItem>
-                  <NFormItem label="角标">
-                    <NInput v-model:value="item.badge" placeholder="如 Sale / New" />
-                  </NFormItem>
-                  <NFormItem label="辅助文案" class="home-layout-admin__full">
-                    <NInput v-model:value="item.description" placeholder="辅助说明文案" />
-                  </NFormItem>
-                </div>
-
-                <div class="home-layout-admin__grid">
-                  <NFormItem label="按钮文案">
-                    <NInput v-model:value="item.action.text" placeholder="如 Shop now" />
-                  </NFormItem>
-                  <NFormItem label="跳转地址">
-                    <NInput v-model:value="item.action.link" placeholder="/sym" />
-                  </NFormItem>
-                  <NFormItem label="打开方式">
-                    <NSelect
-                      v-model:value="item.action.target"
-                      :options="[
-                        { label: '当前页打开', value: 'self' },
-                        { label: '新窗口打开', value: 'blank' },
-                      ]"
-                    />
-                  </NFormItem>
-                </div>
-              </NCard>
+                  <div class="home-layout-admin__grid">
+                    <NFormItem label="按钮文案">
+                      <NInput v-model:value="item.action.text" placeholder="如 Shop now" />
+                    </NFormItem>
+                    <NFormItem label="跳转地址">
+                      <NInput v-model:value="item.action.link" placeholder="/sym" />
+                    </NFormItem>
+                    <NFormItem label="打开方式">
+                      <NSelect
+                        v-model:value="item.action.target"
+                        :options="[
+                          { label: '当前页打开', value: 'self' },
+                          { label: '新窗口打开', value: 'blank' },
+                        ]"
+                      />
+                    </NFormItem>
+                  </div>
+                </NCollapseItem>
+              </NCollapse>
             </div>
           </div>
         </NCard>
@@ -948,6 +941,24 @@ onMounted(() => {
   gap: 12px;
 }
 
+.home-layout-admin__item-collapse :deep(.n-collapse-item) {
+  margin-bottom: 12px;
+  padding: 0 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.home-layout-admin__item-collapse :deep(.n-collapse-item__header) {
+  min-height: 56px;
+  padding-top: 0;
+}
+
+.home-layout-admin__item-collapse :deep(.n-collapse-item__content-inner) {
+  padding-top: 4px;
+  padding-bottom: 16px;
+}
+
 .home-layout-admin__module-item {
   width: 100%;
   padding: 12px;
@@ -971,6 +982,10 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.home-layout-admin__section-header {
+  margin-bottom: 12px;
 }
 
 .home-layout-admin__module-sub {

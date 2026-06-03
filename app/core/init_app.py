@@ -202,19 +202,23 @@ async def init_menus():
         await Menu.create(**top_menu_payload)
 
     system_menu = await Menu.filter(path="/system", parent_id=0).first()
-    if not system_menu:
-        system_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="系统管理",
-            path="/system",
-            order=1,
-            parent_id=0,
-            icon="carbon:gui-management",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="/system/user",
-        )
+    system_payload = dict(
+        menu_type=MenuType.CATALOG,
+        name="系统管理",
+        path="/system",
+        order=6,
+        parent_id=0,
+        icon="carbon:gui-management",
+        is_hidden=False,
+        component="Layout",
+        keepalive=False,
+        redirect="/system/user",
+    )
+    if system_menu:
+        system_menu.update_from_dict(system_payload)
+        await system_menu.save()
+    else:
+        system_menu = await Menu.create(**system_payload)
 
     content_menu = await Menu.filter(path="/content", parent_id=0).first()
     content_payload = dict(
@@ -235,12 +239,31 @@ async def init_menus():
     else:
         content_menu = await Menu.create(**content_payload)
 
+    site_menu = await Menu.filter(path="/site", parent_id=0).first()
+    site_payload = dict(
+        menu_type=MenuType.CATALOG,
+        name="站点管理",
+        path="/site",
+        order=3,
+        parent_id=0,
+        icon="material-symbols:web-traffic",
+        is_hidden=False,
+        component="Layout",
+        keepalive=False,
+        redirect="/site/site-config",
+    )
+    if site_menu:
+        site_menu.update_from_dict(site_payload)
+        await site_menu.save()
+    else:
+        site_menu = await Menu.create(**site_payload)
+
     data_menu = await Menu.filter(path="/data", parent_id=0).first()
     data_payload = dict(
         menu_type=MenuType.CATALOG,
         name="数据管理",
         path="/data",
-        order=3,
+        order=4,
         parent_id=0,
         icon="material-symbols:database-outline",
         is_hidden=False,
@@ -259,7 +282,7 @@ async def init_menus():
         menu_type=MenuType.CATALOG,
         name="批量中心",
         path="/batch",
-        order=4,
+        order=5,
         parent_id=0,
         icon="material-symbols:upload-file-outline",
         is_hidden=False,
@@ -273,73 +296,38 @@ async def init_menus():
     else:
         batch_menu = await Menu.create(**batch_payload)
 
-    business_children = [
+    content_children = [
         {
             "name": "好物管理",
             "path": "product",
-            "order": 7,
+            "order": 1,
             "icon": "material-symbols:shopping-bag-outline",
             "component": "/system/product",
         },
         {
             "name": "分类管理",
             "path": "category",
-            "order": 8,
+            "order": 2,
             "icon": "material-symbols:category-outline",
             "component": "/system/category",
         },
         {
             "name": "品牌管理",
             "path": "brand",
-            "order": 9,
+            "order": 3,
             "icon": "mdi:tag-outline",
             "component": "/system/brand",
         },
         {
             "name": "标签管理",
             "path": "tag",
-            "order": 10,
+            "order": 4,
             "icon": "mdi:tag-multiple-outline",
             "component": "/system/tag",
         },
-        {
-            "name": "横幅管理",
-            "path": "banner",
-            "order": 11,
-            "icon": "material-symbols:slideshow-outline",
-            "component": "/system/banner",
-        },
-        {
-            "name": "联系方式管理",
-            "path": "contact",
-            "order": 12,
-            "icon": "material-symbols:contact-phone-outline",
-            "component": "/system/contact",
-        },
-        {
-            "name": "渠道管理",
-            "path": "platform",
-            "order": 13,
-            "icon": "mdi:source-branch",
-            "component": "/system/platform",
-        },
-        {
-            "name": "站点配置",
-            "path": "site-config",
-            "order": 14,
-            "icon": "material-symbols:settings-suggest-outline",
-            "component": "/system/site-config",
-        },
-        {
-            "name": "首页装修",
-            "path": "home-layout",
-            "order": 15,
-            "icon": "material-symbols:view-quilt-outline",
-            "component": "/system/home-layout",
-        },
     ]
 
-    for item in business_children:
+    for item in content_children:
         menu_obj = await Menu.filter(parent_id=content_menu.id, path=item["path"]).first()
         if not menu_obj:
             menu_obj = await Menu.filter(parent_id=system_menu.id, path=item["path"]).first()
@@ -349,6 +337,67 @@ async def init_menus():
             path=item["path"],
             order=item["order"],
             parent_id=content_menu.id,
+            icon=item["icon"],
+            is_hidden=False,
+            component=item["component"],
+            keepalive=False,
+        )
+        if menu_obj:
+            menu_obj.update_from_dict(payload)
+            await menu_obj.save()
+        else:
+            await Menu.create(**payload)
+
+    site_children = [
+        {
+            "name": "站点配置",
+            "path": "site-config",
+            "order": 1,
+            "icon": "material-symbols:settings-suggest-outline",
+            "component": "/system/site-config",
+        },
+        {
+            "name": "首页装修",
+            "path": "home-layout",
+            "order": 2,
+            "icon": "material-symbols:view-quilt-outline",
+            "component": "/system/home-layout",
+        },
+        {
+            "name": "横幅管理",
+            "path": "banner",
+            "order": 3,
+            "icon": "material-symbols:slideshow-outline",
+            "component": "/system/banner",
+        },
+        {
+            "name": "渠道管理",
+            "path": "platform",
+            "order": 4,
+            "icon": "mdi:source-branch",
+            "component": "/system/platform",
+        },
+        {
+            "name": "联系方式管理",
+            "path": "contact",
+            "order": 5,
+            "icon": "material-symbols:contact-phone-outline",
+            "component": "/system/contact",
+        },
+    ]
+
+    for item in site_children:
+        menu_obj = await Menu.filter(parent_id=site_menu.id, path=item["path"]).first()
+        if not menu_obj:
+            menu_obj = await Menu.filter(parent_id=content_menu.id, path=item["path"]).first()
+        if not menu_obj:
+            menu_obj = await Menu.filter(parent_id=system_menu.id, path=item["path"]).first()
+        payload = dict(
+            menu_type=MenuType.MENU,
+            name=item["name"],
+            path=item["path"],
+            order=item["order"],
+            parent_id=site_menu.id,
             icon=item["icon"],
             is_hidden=False,
             component=item["component"],

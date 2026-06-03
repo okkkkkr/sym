@@ -37,8 +37,6 @@ PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "product_code_custom",
     "status",
     "order",
-    "detail_text",
-    "detail_description_json",
 ]
 
 PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
@@ -51,8 +49,6 @@ PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
     "product_code_custom": "好物识别码",
     "status": "上架状态",
     "order": "排序",
-    "detail_text": "详情文本",
-    "detail_description_json": "结构化详情JSON",
 }
 
 PRODUCT_IMPORT_TEMPLATE_HEADERS = [
@@ -70,8 +66,6 @@ PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
     "SKU-A1001",
     "1",
     0,
-    "这是一条示例详情文本",
-    "",
 ]
 
 SAMPLE_PNG_BYTES = b64decode(

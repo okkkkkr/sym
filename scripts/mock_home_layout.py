@@ -154,7 +154,6 @@ def build_mock_payload() -> dict:
                     "autoplay": True,
                     "interval": 3200,
                     "show_dots": True,
-                    "show_arrows": True,
                 },
                 "items": [
                     {
@@ -193,12 +192,7 @@ def build_mock_payload() -> dict:
                     "link": "/sym",
                     "target": "self",
                 },
-                "config": {
-                    "cards_per_view_pc": 4,
-                    "cards_per_view_pad": 2,
-                    "cards_per_view_mobile": 1,
-                    "card_gap": 24,
-                },
+                "config": {},
                 "items": [
                     {
                         "sort": 1,

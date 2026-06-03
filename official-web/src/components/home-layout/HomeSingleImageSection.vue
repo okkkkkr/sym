@@ -30,7 +30,7 @@ const hero = module.items?.[0] || {}
 
 <style scoped>
 .home-single {
-  padding: 32px 24px 0;
+  padding: 24px 24px 0;
 }
 
 .home-single__card {
@@ -100,38 +100,47 @@ const hero = module.items?.[0] || {}
 
 @media (hover: hover) and (pointer: fine) {
   .home-single__card:hover .home-single__image {
-    transform: scale(1.04);
+    transform: scale(1.01);
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .home-single {
-    padding: 16px 16px 0;
+    padding: 12px 12px 0;
   }
 
   .home-single__card,
   .home-single__image {
-    border-radius: 24px;
-  }
-
-  .home-single__image {
-    aspect-ratio: 4 / 5;
+    border-radius: 20px;
   }
 
   .home-single__overlay {
-    align-items: flex-start;
-    text-align: left;
+    gap: 6px;
+    padding: 14px 16px;
+  }
+
+  .home-single__eyebrow {
+    font-size: 11px;
+    line-height: 1.1;
   }
 
   .home-single h1 {
-    font-size: 52px;
+    max-width: 100%;
+    font-size: clamp(22px, 7.6vw, 32px);
+    line-height: 0.96;
+  }
+
+  .home-single p {
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.2;
   }
 
   .home-single__button {
     min-width: 0;
-    min-height: 52px;
-    padding: 0 22px;
-    font-size: 16px;
+    min-height: 34px;
+    padding: 0 14px;
+    font-size: 12px;
   }
 }
 </style>

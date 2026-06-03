@@ -57,6 +57,15 @@ onMounted(() => {
   background: #f7f5ef;
 }
 
+:deep(.page-container) {
+  width: min(100%, 1800px);
+}
+
+:deep(.main-nav__inner) {
+  border-bottom: 0;
+  grid-template-columns: auto 1fr;
+}
+
 .home-layout__main {
   flex: 1 0 auto;
   width: 100%;

@@ -1,32 +1,48 @@
 <script setup>
-import { computed, markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
-import { FacebookOutlined, LinkOutlined, MailOutlined, PhoneOutlined, WechatOutlined, WhatsAppOutlined } from '@ant-design/icons-vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, markRaw, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  FacebookOutlined,
+  LinkOutlined,
+  MailOutlined,
+  PhoneOutlined,
+  WechatOutlined,
+  WhatsAppOutlined,
+} from "@ant-design/icons-vue";
+import { message } from "ant-design-vue";
+import { RouterLink, useRoute } from "vue-router";
 
-import { useContactPopoverTracking } from '../../composables/useContactPopoverTracking'
-import { useSiteConfig } from '../../composables/useSiteConfig'
-import { fetchCatalogCategories, resolveCategoryKey } from '../../services/catalog'
-import { fetchActiveContacts } from '../../services/contacts'
+import { useContactPopoverTracking } from "../../composables/useContactPopoverTracking";
+import { useSiteConfig } from "../../composables/useSiteConfig";
+import {
+  fetchCatalogCategories,
+  resolveCategoryKey,
+} from "../../services/catalog";
+import { fetchActiveContacts } from "../../services/contacts";
 
 const props = defineProps({
   showCategories: {
     type: Boolean,
     default: true,
   },
-})
+});
 
-const route = useRoute()
-const isSmallScreen = ref(false)
-const categories = ref([])
-const contacts = ref([])
-const { siteConfig, loadSiteConfig } = useSiteConfig()
-const { handleContactPopoverChange, disposeContactPopoverTracking } = useContactPopoverTracking(isSmallScreen)
+const route = useRoute();
+const isSmallScreen = ref(false);
+const categories = ref([]);
+const contacts = ref([]);
+const { siteConfig, loadSiteConfig } = useSiteConfig();
+const { handleContactPopoverChange, disposeContactPopoverTracking } =
+  useContactPopoverTracking(isSmallScreen);
 
-const contactPopoverTrigger = computed(() => (isSmallScreen.value ? 'click' : 'hover'))
-const navContacts = computed(() => contacts.value.slice(0, 2))
-const logoImage = computed(() => siteConfig.value.logo_url)
+const contactPopoverTrigger = computed(() =>
+  isSmallScreen.value ? "click" : "hover",
+);
+const navContacts = computed(() => contacts.value.slice(0, 2));
+const logoImage = computed(() => siteConfig.value.logo_url);
+const shareButtonTitle = ref("复制当前链接");
 
-let mediaQuery
+let mediaQuery;
+const PLATFORM_STORAGE_KEY = "sym-fast:platform";
 
 const contactIconMap = {
   facebook: markRaw(FacebookOutlined),
@@ -34,94 +50,136 @@ const contactIconMap = {
   wechat: markRaw(WechatOutlined),
   email: markRaw(MailOutlined),
   phone: markRaw(PhoneOutlined),
-}
+};
 
 const currentCategory = computed(() => {
-  return resolveCategoryKey(categories.value, route.query.category)
-})
+  return resolveCategoryKey(categories.value, route.query.category);
+});
 
 const primaryCategories = computed(() => {
   if (!isSmallScreen.value) {
-    return categories.value
+    return categories.value;
   }
 
-  return categories.value.slice(0, 2)
-})
+  return categories.value.slice(0, 2);
+});
 
 const overflowCategories = computed(() => {
   if (!isSmallScreen.value) {
-    return []
+    return [];
   }
 
-  return categories.value.slice(2)
-})
+  return categories.value.slice(2);
+});
 
-const selectedKeys = computed(() => (route.path === '/sym' ? [currentCategory.value] : []))
-const menuVisible = computed(() => props.showCategories && categories.value.length > 0)
+const selectedKeys = computed(() =>
+  route.path === "/sym" ? [currentCategory.value] : [],
+);
+const menuVisible = computed(
+  () => props.showCategories && categories.value.length > 0,
+);
 
 function categoryLink(categoryKey) {
-  return { path: '/sym', query: { category: categoryKey } }
+  return { path: "/sym", query: { category: categoryKey } };
 }
 
 function isActiveCategory(categoryKey) {
-  return route.path === '/sym' && currentCategory.value === categoryKey
+  return route.path === "/sym" && currentCategory.value === categoryKey;
 }
 
 function updateSmallScreenState(event) {
-  isSmallScreen.value = event.matches
+  isSmallScreen.value = event.matches;
 }
 
 function resolveContactIcon(item) {
-  const key = String(item.platform || item.contact_type || '').toLowerCase()
-  return contactIconMap[key] || markRaw(LinkOutlined)
+  const key = String(item.platform || item.contact_type || "").toLowerCase();
+  return contactIconMap[key] || markRaw(LinkOutlined);
+}
+
+async function handleShare() {
+  const url = new URL(window.location.href);
+  const platform = String(
+    window.localStorage.getItem(PLATFORM_STORAGE_KEY) || "",
+  ).trim();
+
+  if (platform) {
+    url.searchParams.set("plat", platform);
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url.toString());
+    } else {
+      const input = document.createElement("input");
+      input.value = url.toString();
+      input.setAttribute("readonly", "readonly");
+      input.style.position = "absolute";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+
+    shareButtonTitle.value = "Link copied";
+    message.success("Link copied");
+    window.setTimeout(() => {
+      shareButtonTitle.value = "复制当前链接";
+    }, 1600);
+  } catch (error) {
+    shareButtonTitle.value = "复制失败";
+    message.error("复制失败");
+    window.setTimeout(() => {
+      shareButtonTitle.value = "复制当前链接";
+    }, 1600);
+  }
 }
 
 onMounted(() => {
-  mediaQuery = window.matchMedia('(max-width: 767px)')
-  isSmallScreen.value = mediaQuery.matches
+  mediaQuery = window.matchMedia("(max-width: 767px)");
+  isSmallScreen.value = mediaQuery.matches;
 
-  loadSiteConfig().catch(() => {})
+  loadSiteConfig().catch(() => {});
 
   if (props.showCategories) {
     fetchCatalogCategories()
       .then((data) => {
-        categories.value = data
+        categories.value = data;
       })
       .catch(() => {
-        categories.value = []
-      })
+        categories.value = [];
+      });
   }
 
   fetchActiveContacts()
     .then((data) => {
-      contacts.value = data
+      contacts.value = data;
     })
     .catch(() => {
-      contacts.value = []
-    })
+      contacts.value = [];
+    });
 
   if (mediaQuery.addEventListener) {
-    mediaQuery.addEventListener('change', updateSmallScreenState)
-    return
+    mediaQuery.addEventListener("change", updateSmallScreenState);
+    return;
   }
 
-  mediaQuery.addListener(updateSmallScreenState)
-})
+  mediaQuery.addListener(updateSmallScreenState);
+});
 
 onBeforeUnmount(() => {
-  disposeContactPopoverTracking()
+  disposeContactPopoverTracking();
   if (!mediaQuery) {
-    return
+    return;
   }
 
   if (mediaQuery.removeEventListener) {
-    mediaQuery.removeEventListener('change', updateSmallScreenState)
-    return
+    mediaQuery.removeEventListener("change", updateSmallScreenState);
+    return;
   }
 
-  mediaQuery.removeListener(updateSmallScreenState)
-})
-
+  mediaQuery.removeListener(updateSmallScreenState);
+});
 </script>
 
 <template>
@@ -146,18 +204,33 @@ onBeforeUnmount(() => {
         class="main-nav__menu"
       >
         <a-menu-item v-for="category in primaryCategories" :key="category.key">
-          <RouterLink :to="categoryLink(category.key)" active-class="main-nav__route-state" exact-active-class="main-nav__route-state" class="main-nav__menu-link" :class="{ 'is-active': isActiveCategory(category.key) }">{{ category.name }}</RouterLink>
+          <RouterLink
+            :to="categoryLink(category.key)"
+            active-class="main-nav__route-state"
+            exact-active-class="main-nav__route-state"
+            class="main-nav__menu-link"
+            :class="{ 'is-active': isActiveCategory(category.key) }"
+            >{{ category.name }}</RouterLink
+          >
         </a-menu-item>
-        <a-sub-menu v-if="overflowCategories.length" key="more" popup-class-name="main-nav__submenu-popup">
+        <a-sub-menu
+          v-if="overflowCategories.length"
+          key="more"
+          popup-class-name="main-nav__submenu-popup"
+        >
           <template #title>...</template>
-          <a-menu-item v-for="category in overflowCategories" :key="category.key">
+          <a-menu-item
+            v-for="category in overflowCategories"
+            :key="category.key"
+          >
             <RouterLink
               :to="categoryLink(category.key)"
               active-class="main-nav__route-state"
               exact-active-class="main-nav__route-state"
               class="main-nav__menu-link"
               :class="{ 'is-active': isActiveCategory(category.key) }"
-            >{{ category.name }}</RouterLink>
+              >{{ category.name }}</RouterLink
+            >
           </a-menu-item>
         </a-sub-menu>
       </a-menu>
@@ -174,15 +247,40 @@ onBeforeUnmount(() => {
           <template #content>
             <div class="contact-popover__body">
               <div class="contact-popover__title">{{ item.display_name }}</div>
-              <div class="contact-popover__meta">{{ item.contact_value || item.link_url }}</div>
+              <div class="contact-popover__meta">
+                {{ item.contact_value || item.link_url }}
+              </div>
               <a-image :width="150" :preview="false" :src="item.qr_image_url" />
             </div>
           </template>
 
           <span class="main-nav__contact-trigger">
-            <component :is="resolveContactIcon(item)" class="main-nav__contact-icon" />
+            <component
+              :is="resolveContactIcon(item)"
+              class="main-nav__contact-icon"
+            />
           </span>
         </a-popover>
+
+        <button
+          type="button"
+          class="main-nav__share"
+          :title="shareButtonTitle"
+          :aria-label="shareButtonTitle"
+          @click="handleShare"
+        >
+          <svg
+            class="main-nav__share-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 0 576 512"
+          >
+            <path
+              d="M568.482 177.448L424.479 313.433C409.3 327.768 384 317.14 384 295.985v-71.963c-144.575.97-205.566 35.113-164.775 171.353c4.483 14.973-12.846 26.567-25.006 17.33C155.252 383.105 120 326.488 120 269.339c0-143.937 117.599-172.5 264-173.312V24.012c0-21.174 25.317-31.768 40.479-17.448l144.003 135.988c10.02 9.463 10.028 25.425 0 34.896zM384 379.128V448H64V128h50.916a11.99 11.99 0 0 0 8.648-3.693c14.953-15.568 32.237-27.89 51.014-37.676C185.708 80.83 181.584 64 169.033 64H48C21.49 64 0 85.49 0 112v352c0 26.51 21.49 48 48 48h352c26.51 0 48-21.49 48-48v-88.806c0-8.288-8.197-14.066-16.011-11.302a71.83 71.83 0 0 1-34.189 3.377c-7.27-1.046-13.8 4.514-13.8 11.859z"
+              fill="currentColor"
+            ></path>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -277,7 +375,9 @@ onBeforeUnmount(() => {
   color: inherit !important;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.2s ease, font-weight 0.2s ease;
+  transition:
+    color 0.2s ease,
+    font-weight 0.2s ease;
 }
 
 :deep(.main-nav__menu-link) {
@@ -331,7 +431,11 @@ onBeforeUnmount(() => {
   color: #2a2a2a !important;
 }
 
-:deep(.main-nav__menu.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title) {
+:deep(
+  .main-nav__menu.ant-menu-horizontal
+    > .ant-menu-submenu
+    .ant-menu-submenu-title
+) {
   padding-inline: 0;
   font-weight: 500;
 }
@@ -355,7 +459,9 @@ onBeforeUnmount(() => {
 .main-nav__contact-icon {
   font-size: 24px;
   cursor: pointer;
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .main-nav__contact-icon:hover {
@@ -367,6 +473,35 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.main-nav__share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #111111;
+  cursor: pointer;
+}
+
+.main-nav__share:hover {
+  color: #000000;
+}
+
+.main-nav__share-icon {
+  width: 24px;
+  height: 24px;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.main-nav__share:hover .main-nav__share-icon {
+  transform: translateY(-1px);
 }
 
 .main-nav__popover-content {
@@ -411,4 +546,13 @@ onBeforeUnmount(() => {
   line-height: 1.6;
 }
 
+@media (max-width: 767px) {
+  .main-nav__inner {
+    gap: 12px;
+  }
+
+  .main-nav__contact {
+    gap: 14px;
+  }
+}
 </style>
