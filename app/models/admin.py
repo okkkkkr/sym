@@ -233,7 +233,7 @@ class Product(BaseModel, TimestampMixin):
     tags = fields.ManyToManyField("models.Tag", related_name="products", through="product_tag")
     category_id = fields.BigIntField(description="类目ID", index=True)
     brand_id = fields.BigIntField(description="品牌ID", index=True)
-    name = fields.CharField(max_length=100, unique=True, description="好物名称", index=True)
+    name = fields.CharField(max_length=100, description="好物名称", index=True)
     product_code = fields.CharField(max_length=64, null=True, description="好物识别码", index=True)
     desc = fields.CharField(max_length=255, null=True, description="好物简介")
     detail_description = fields.JSONField(default=list, description="结构化详情")

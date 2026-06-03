@@ -23,6 +23,7 @@ from app.services import (
 )
 from app.settings import settings
 from app.utils.excel_export import build_xlsx_content
+from app.utils.product_media import sort_media_keys
 
 
 async def ensure_tortoise_initialized() -> None:
@@ -253,10 +254,10 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                 duplicate_hint=row.duplicate_hint,
             )
 
-            material_set = material_map.get(row.name)
+            material_set = material_map.get(row.material_dir)
             row_errors = list(row.errors)
             if material_set is None:
-                row_errors.append("未找到与名称对应的素材目录")
+                row_errors.append("未找到与素材目录对应的素材文件夹")
             else:
                 if not material_set.images:
                     row_errors.append("素材目录至少需要一张图片")
@@ -285,18 +286,24 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                     processed_count += 1
                     await product_import_task_item_controller.mark_skipped(item.id, message="任务已由用户取消")
                     break
-                image_keys = [item["object_key"] for item in image_uploads]
-                video_keys = [item["object_key"] for item in video_uploads]
                 cover_image_key = next(
                     (
-                        item["object_key"]
-                        for item in image_uploads
-                        if os.path.abspath(item["path"]) == os.path.abspath(material_set.cover_image)
+                        uploaded["object_key"]
+                        for uploaded in image_uploads
+                        if os.path.abspath(uploaded["path"]) == os.path.abspath(material_set.cover_image)
                     ),
                     None,
                 )
-                if cover_image_key is None and image_keys:
-                    cover_image_key = image_keys[0]
+                image_keys = sort_media_keys(
+                    [
+                        uploaded["object_key"]
+                        for uploaded in image_uploads
+                        if os.path.abspath(uploaded["path"]) != os.path.abspath(material_set.cover_image)
+                    ]
+                )
+                video_keys = [item["object_key"] for item in video_uploads]
+                if cover_image_key is None and image_uploads:
+                    cover_image_key = image_uploads[0]["object_key"]
                 payload = {
                     "category_id": row.category_id,
                     "brand_id": row.brand_id,

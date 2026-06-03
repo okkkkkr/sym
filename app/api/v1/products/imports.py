@@ -29,6 +29,7 @@ router = APIRouter(prefix="/import")
 
 PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "name",
+    "material_dir",
     "category_name",
     "brand_name",
     "desc",
@@ -36,10 +37,13 @@ PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "product_code_custom",
     "status",
     "order",
+    "detail_text",
+    "detail_description_json",
 ]
 
 PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
     "name": "名称",
+    "material_dir": "素材目录",
     "category_name": "所属分类",
     "brand_name": "所属品牌",
     "desc": "简介",
@@ -58,13 +62,16 @@ PRODUCT_IMPORT_TEMPLATE_HEADERS = [
 
 PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
     "示例好物A",
+    "示例好物A",
     "示例分类",
     "示例品牌",
     "这是一条示例简介",
     "标签A;标签B",
-    "1001",
+    "SKU-A1001",
     "1",
     0,
+    "这是一条示例详情文本",
+    "",
 ]
 
 SAMPLE_PNG_BYTES = b64decode(

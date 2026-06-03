@@ -44,6 +44,8 @@ const DEFAULT_DETAIL_DESCRIPTION = JSON.stringify(
 )
 
 let uploadFileSeed = 0
+const mediaIndexPattern = /_(\d+)(?:\.[^.]+)?$/
+const uuidPrefixPattern = /^[0-9a-f]{32}_(.+)$/i
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -111,11 +113,7 @@ const rules = {
     trigger: ['input', 'blur'],
   },
   product_code_custom: {
-    validator: (_, value) => {
-      const productCode = String(value || '').trim()
-      if (!productCode || /^\d+$/.test(productCode)) return true
-      return new Error('好物识别码仅支持数字')
-    },
+    validator: () => true,
     trigger: ['input', 'blur'],
   },
   cover_file_list: {
@@ -197,6 +195,39 @@ function getFileNameFromUrl(url, prefix = 'file') {
   return decodeURIComponent(fileName || `${prefix}-${uploadFileSeed}`)
 }
 
+function getMediaSortName(value) {
+  const fileName = getFileNameFromUrl(value)
+  const matched = fileName.match(uuidPrefixPattern)
+  return matched?.[1] || fileName
+}
+
+function getMediaSortIndex(value) {
+  const matched = getMediaSortName(value).match(mediaIndexPattern)
+  return matched ? Number(matched[1]) : null
+}
+
+function compareMediaOrder(left, right) {
+  const leftName = getMediaSortName(left).toLowerCase()
+  const rightName = getMediaSortName(right).toLowerCase()
+  const leftIndex = getMediaSortIndex(left)
+  const rightIndex = getMediaSortIndex(right)
+  if (leftIndex !== null && rightIndex !== null && leftIndex !== rightIndex) {
+    return leftIndex - rightIndex
+  }
+  if (leftIndex !== null) return -1
+  if (rightIndex !== null) return 1
+  return leftName.localeCompare(rightName)
+}
+
+function sortUploadFileList(fileList = []) {
+  return [...fileList].sort((left, right) =>
+    compareMediaOrder(
+      left?.rawUrl || left?.name || left?.url || left?.thumbnailUrl || '',
+      right?.rawUrl || right?.name || right?.url || right?.thumbnailUrl || ''
+    )
+  )
+}
+
 function isImageUploadPrefix(prefix = 'file') {
   return prefix === 'cover' || prefix === 'image'
 }
@@ -235,21 +266,28 @@ function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
-  return fileList
+  const normalizedList = fileList
     .filter((item) => item?.status !== 'removed')
     .map((item) => {
       if (item.url || item.thumbnailUrl) return decorateUploadFile(item, prefix)
       const objectUrl = item.file ? URL.createObjectURL(item.file) : ''
       return objectUrl ? decorateUploadFile({ ...item, url: objectUrl }, prefix) : item
     })
+  return prefix === 'image' ? sortUploadFileList(normalizedList) : normalizedList
 }
 
 function buildUploadKeys(fileList = []) {
-  return normalizeUploadFileList(fileList)
+  const uploadKeys = normalizeUploadFileList(fileList)
     .filter((item) => !item?.status || item.status === 'finished')
     .map((item) => String(item.rawUrl || item.url || item.thumbnailUrl || '').trim())
     .filter((url) => !url.startsWith('blob:'))
     .filter(Boolean)
+  return sortUploadFileList(
+    uploadKeys.map((item) => ({
+      rawUrl: item,
+      name: getFileNameFromUrl(item),
+    }))
+  ).map((item) => item.rawUrl)
 }
 
 function syncUploadField(fieldName, prefix) {
@@ -829,7 +867,7 @@ function goToProductImport() {
               <NInput
                 v-model:value="modalForm.product_code_custom"
                 clearable
-                placeholder="请输入数字，例如 666"
+                placeholder="请输入自定义字符串，例如 SKU-666"
               />
             </NFormItem>
             <NFormItem label="所属分类" path="category_id">

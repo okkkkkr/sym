@@ -1,15 +1,14 @@
 import secrets
 import string
-import unicodedata
 from datetime import datetime
 
 from fastapi import HTTPException
-from tortoise.exceptions import IntegrityError
 
 from app.core.crud import CRUDBase
 from app.models.admin import Product
 from app.models.admin import Tag
 from app.schemas.products import ProductCreate, ProductUpdate
+from app.utils.product_media import sort_media_keys
 
 from .brand import brand_controller
 from .category import category_controller
@@ -24,7 +23,10 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
         if not product_code:
             return ""
         prefix, _, _ = product_code.partition("-")
-        if len(prefix) <= 4:
+        if len(prefix) < 4:
+            return ""
+        year_prefix = prefix[:4]
+        if not year_prefix.isdigit():
             return ""
         return prefix[4:]
 
@@ -37,8 +39,6 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
         normalized_custom = str(custom_value or "").strip()
         if not normalized_custom:
             return current_code
-        if not normalized_custom.isdigit():
-            raise HTTPException(status_code=400, detail="好物识别码仅支持数字")
 
         year = datetime.now().year
         prefix = f"{year}{normalized_custom}"
@@ -69,36 +69,17 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
         return normalized_tag_ids
 
     @staticmethod
-    def normalize_name(name: str) -> str:
-        return unicodedata.normalize("NFKC", str(name or "").strip())
-
-    async def ensure_name_unique(self, name: str, exclude_id: int | None = None) -> None:
-        normalized_name = self.normalize_name(name)
-        if not normalized_name:
-            return
-
-        for item_id, item_name in await self.model.all().values_list("id", "name"):
-            if exclude_id is not None and item_id == exclude_id:
-                continue
-            if self.normalize_name(item_name) == normalized_name:
-                raise HTTPException(status_code=400, detail="好物名称已存在")
+    def normalize_media_keys(keys: list[str]) -> list[str]:
+        return sort_media_keys(list(dict.fromkeys(item for item in keys if item)))
 
     async def create_with_tags(self, obj_in: dict, tag_ids: list[int]) -> Product:
-        await self.ensure_name_unique(obj_in.get("name"))
-        try:
-            product = await self.create(obj_in=obj_in)
-        except IntegrityError as exc:
-            raise HTTPException(status_code=400, detail="好物名称已存在") from exc
+        product = await self.create(obj_in=obj_in)
         if tag_ids:
             await product.tags.add(*await self._get_tags(tag_ids))
         return product
 
     async def update_with_tags(self, id: int, obj_in: dict, tag_ids: list[int]) -> Product:
-        await self.ensure_name_unique(obj_in.get("name"), exclude_id=id)
-        try:
-            product = await self.update(id=id, obj_in=obj_in)
-        except IntegrityError as exc:
-            raise HTTPException(status_code=400, detail="好物名称已存在") from exc
+        product = await self.update(id=id, obj_in=obj_in)
         await product.tags.clear()
         if tag_ids:
             await product.tags.add(*await self._get_tags(tag_ids))

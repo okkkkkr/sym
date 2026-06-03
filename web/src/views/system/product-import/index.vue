@@ -446,7 +446,7 @@ onBeforeUnmount(() => {
     <NSpace vertical :size="16">
       <NAlert type="info" :show-icon="false">
         支持上传不超过 2GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
-        product.xlsx，素材目录名需与 Excel 中的 name 精确一致。
+        product.xlsx，素材目录名需与 Excel 中的“素材目录”列精确一致。
       </NAlert>
 
       <NCard title="上传 ZIP 包" size="small">
@@ -492,7 +492,7 @@ onBeforeUnmount(() => {
           <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
           <div>2. 品牌、分类、标签均按名称精确匹配。</div>
           <div>3. 图片目录至少包含一张图片，优先使用文件名含 _cover 的图片作为封面。</div>
-          <div>4. 同名好物会直接拦截并记为失败，不会创建重复记录。</div>
+          <div>4. 同名好物允许重复导入，但每一行都必须提供唯一的“素材目录”用于绑定素材文件夹。</div>
         </NSpace>
       </NCard>
 

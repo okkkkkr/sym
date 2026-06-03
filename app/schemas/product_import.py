@@ -29,6 +29,7 @@ class ProductImportUploadCompleteOut(BaseModel):
 class ProductImportParsedRow(BaseModel):
     row_no: int = Field(..., description="Excel行号")
     name: str = Field(..., description="好物名称")
+    material_dir: str = Field(default="", description="素材目录")
     category_name: str = Field(default="", description="分类名称")
     brand_name: str = Field(default="", description="品牌名称")
     category_id: int | None = Field(default=None, description="分类ID")
@@ -36,7 +37,7 @@ class ProductImportParsedRow(BaseModel):
     desc: str | None = Field(default=None, description="好物简介")
     tag_names: list[str] = Field(default_factory=list, description="标签名称列表")
     tag_ids: list[int] = Field(default_factory=list, description="标签ID列表")
-    product_code_custom: str | None = Field(default=None, description="识别码自定义数字")
+    product_code_custom: str | None = Field(default=None, description="识别码自定义字符串")
     status: bool = Field(default=True, description="是否上架")
     order: int = Field(default=0, description="排序值")
     detail_description: list[Any] = Field(default_factory=list, description="结构化详情")

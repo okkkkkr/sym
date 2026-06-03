@@ -177,6 +177,7 @@ async def create_product(product_in: ProductCreate):
     await product_controller.ensure_relations(product_in.category_id, product_in.brand_id)
     tag_ids = await product_controller.ensure_tag_ids_exist(product_in.tag_ids)
     payload = product_in.model_dump(exclude={"product_code_custom", "tag_ids"})
+    payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
     payload["product_code"] = await product_controller.build_product_code(product_in.product_code_custom)
     await product_controller.create_with_tags(obj_in=payload, tag_ids=tag_ids)
     return Success(msg="Created Successfully")
@@ -188,6 +189,7 @@ async def update_product(product_in: ProductUpdate):
     tag_ids = await product_controller.ensure_tag_ids_exist(product_in.tag_ids)
     current_product = await product_controller.get(id=product_in.id)
     payload = product_in.model_dump(exclude={"id", "product_code_custom", "tag_ids"})
+    payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
     payload["product_code"] = await product_controller.build_product_code(
         product_in.product_code_custom,
         current_code=current_product.product_code,

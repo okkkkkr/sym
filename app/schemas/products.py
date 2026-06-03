@@ -3,6 +3,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.utils.product_media import sort_media_keys
+
 
 class ProductTagOut(BaseModel):
     id: int
@@ -14,7 +16,7 @@ class BaseProduct(BaseModel):
     brand_id: int = Field(..., description="品牌ID")
     tag_ids: list[int] = Field(default_factory=list, description="标签ID列表")
     name: str = Field(..., description="好物名称")
-    product_code_custom: Optional[str] = Field(None, description="好物识别码自定义数字")
+    product_code_custom: Optional[str] = Field(None, description="好物识别码自定义字符串")
     desc: Optional[str] = Field(None, description="好物简介")
     detail_description: list[Any] = Field(default_factory=list, description="结构化详情")
     cover_image_key: str = Field(..., description="封面图对象 Key")
@@ -28,11 +30,12 @@ class BaseProduct(BaseModel):
     @classmethod
     def validate_product_code_custom(cls, value: Optional[str]) -> Optional[str]:
         normalized_value = str(value or "").strip()
-        if not normalized_value:
-            return None
-        if not normalized_value.isdigit():
-            raise ValueError("好物识别码仅支持数字")
-        return normalized_value
+        return normalized_value or None
+
+    @field_validator("image_keys")
+    @classmethod
+    def normalize_image_keys(cls, value: list[str]) -> list[str]:
+        return sort_media_keys(list(dict.fromkeys(item for item in value if item)))
 
 
 class ProductCreate(BaseProduct): ...
