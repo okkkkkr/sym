@@ -4,19 +4,44 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from tortoise.expressions import F, Q
+from tortoise.transactions import in_transaction
 
 from app.controllers.brand import brand_controller
 from app.controllers.banner import banner_controller
 from app.controllers.category import category_controller
 from app.controllers.contact import contact_controller
 from app.controllers.product import product_controller
+from app.controllers.site_config import serialize_site_config, site_config_controller
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
-from app.models.admin import Api, AuditLog, Banner, Brand, Category, Contact, Menu, Product, Role, SiteVisit, User
+from app.models.admin import (
+    Api,
+    AuditLog,
+    Banner,
+    Brand,
+    Category,
+    ChannelVisit,
+    ChannelVisitDedup,
+    Contact,
+    ContactClick,
+    ContactClickDedup,
+    Menu,
+    Platform,
+    Product,
+    Role,
+    SiteVisit,
+    User,
+)
 from app.schemas.base import Fail, Success
 from app.schemas.login import *
-from app.schemas.stats import TrackBrandSearchIn, TrackProductClickIn, TrackSiteVisitIn
+from app.schemas.stats import (
+    TrackBrandSearchIn,
+    TrackChannelVisitIn,
+    TrackContactClickIn,
+    TrackProductClickIn,
+    TrackSiteVisitIn,
+)
 from app.services.product_media_upload import product_media_upload_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
@@ -27,6 +52,9 @@ router = APIRouter()
 
 
 CATEGORY_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
+CHANNEL_VISIT_WINDOW = timedelta(minutes=30)
+CONTACT_CLICK_WINDOW = CHANNEL_VISIT_WINDOW
+NATURE_CUSTOM_NAME = "nature"
 
 
 @router.post("/access_token", summary="获取token")
@@ -132,11 +160,11 @@ async def update_user_password(req_in: UpdatePassword):
 
 @router.get("/contacts", summary="查看启用的联系方式")
 async def get_active_contacts(contact_type: str = ""):
-    q = Q(is_active=True)
+    q = Q(is_active=True, is_deleted=False)
     if contact_type:
         q &= Q(contact_type=contact_type)
     _, contact_objs = await contact_controller.list(page=1, page_size=999, search=q, order=["order", "id"])
-    return Success(data=[await obj.to_dict() for obj in contact_objs])
+    return Success(data=[await contact_controller.serialize(obj) for obj in contact_objs])
 
 
 @router.get("/banners", summary="查看启用的横幅")
@@ -148,6 +176,11 @@ async def get_active_banners():
         order=["-priority", "id"],
     )
     return Success(data=[await obj.to_dict() for obj in banner_objs])
+
+
+@router.get("/site-config", summary="查看公开站点配置")
+async def get_public_site_config():
+    return Success(data=serialize_site_config(await site_config_controller.get_singleton()))
 
 
 def serialize_dashboard_product(product_obj):
@@ -212,8 +245,8 @@ async def get_dashboard_overview():
         Category.filter(is_active=True).count(),
         Brand.all().count(),
         Brand.filter(is_active=True).count(),
-        Contact.all().count(),
-        Contact.filter(is_active=True).count(),
+        Contact.filter(is_deleted=False).count(),
+        Contact.filter(is_active=True, is_deleted=False).count(),
         Banner.all().count(),
         Banner.filter(is_active=True).count(),
         AuditLog.filter(created_at__range=[start_of_day, end_of_day]).count(),
@@ -280,6 +313,103 @@ async def track_site_visit(payload: TrackSiteVisitIn, request: Request):
             "tracked": True,
             "visit_id": visit_obj.id,
             "visited_at": visit_obj.visited_at.strftime(settings.DATETIME_FORMAT),
+        }
+    )
+
+
+@router.post("/track/channel-visit", summary="上报前台渠道访问")
+async def track_channel_visit(payload: TrackChannelVisitIn):
+    platform_obj = None
+    if payload.plat and payload.plat != "undefined":
+        platform_obj = await Platform.filter(custom_name=payload.plat).first()
+    if not platform_obj:
+        platform_obj = await Platform.get(custom_name=NATURE_CUSTOM_NAME)
+
+    now = datetime.now(timezone.utc)
+    async with in_transaction() as connection:
+        dedup_obj = await ChannelVisitDedup.filter(
+            visitor_id=payload.visitor_id,
+            custom_name=platform_obj.custom_name,
+        ).using_db(connection).select_for_update().first()
+        if dedup_obj and now - dedup_obj.last_counted_at < CHANNEL_VISIT_WINDOW:
+            return Success(data={"tracked": False, "custom_name": platform_obj.custom_name})
+
+        if dedup_obj:
+            dedup_obj.last_counted_at = now
+            await dedup_obj.save(using_db=connection, update_fields=["last_counted_at"])
+        else:
+            await ChannelVisitDedup.create(
+                visitor_id=payload.visitor_id,
+                custom_name=platform_obj.custom_name,
+                last_counted_at=now,
+                using_db=connection,
+            )
+        visit_obj = await ChannelVisit.create(
+            visitor_id=payload.visitor_id,
+            platform_name_snapshot=platform_obj.platform_name,
+            custom_name=platform_obj.custom_name,
+            using_db=connection,
+        )
+        await Platform.filter(id=platform_obj.id).using_db(connection).update(click_count=F("click_count") + 1)
+
+    return Success(
+        data={
+            "tracked": True,
+            "visit_id": visit_obj.id,
+            "custom_name": platform_obj.custom_name,
+            "visited_at": visit_obj.visited_at.strftime(settings.DATETIME_FORMAT),
+        }
+    )
+
+
+@router.post("/track/contact-click", summary="上报前台联系方式点击")
+async def track_contact_click(payload: TrackContactClickIn):
+    contact_obj = await Contact.filter(id=payload.contact_id, is_active=True, is_deleted=False).first()
+    if not contact_obj:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    now = datetime.now(timezone.utc)
+    async with in_transaction() as connection:
+        dedup_obj = (
+            await ContactClickDedup.filter(
+                visitor_id=payload.visitor_id,
+                contact_id=contact_obj.id,
+            )
+            .using_db(connection)
+            .select_for_update()
+            .first()
+        )
+        if dedup_obj and now - dedup_obj.last_counted_at < CONTACT_CLICK_WINDOW:
+            return Success(data={"tracked": False, "contact_id": contact_obj.id})
+
+        if dedup_obj:
+            dedup_obj.last_counted_at = now
+            await dedup_obj.save(using_db=connection, update_fields=["last_counted_at"])
+        else:
+            await ContactClickDedup.create(
+                visitor_id=payload.visitor_id,
+                contact_id=contact_obj.id,
+                last_counted_at=now,
+                using_db=connection,
+            )
+
+        click_obj = await ContactClick.create(
+            visitor_id=payload.visitor_id,
+            contact_id=contact_obj.id,
+            platform_snapshot=contact_obj.platform,
+            display_name_snapshot=contact_obj.display_name,
+            contact_type_snapshot=contact_obj.contact_type,
+            contact_value_snapshot=contact_obj.contact_value,
+            link_url_snapshot=contact_obj.link_url,
+            using_db=connection,
+        )
+
+    return Success(
+        data={
+            "tracked": True,
+            "click_id": click_obj.id,
+            "contact_id": contact_obj.id,
+            "clicked_at": click_obj.clicked_at.strftime(settings.DATETIME_FORMAT),
         }
     )
 
@@ -358,17 +488,19 @@ def normalize_detail_text(detail_description):
 
 def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
     detail_text = normalize_detail_text(product_dict.get("detail_description"))
+    detail_description = product_dict.get("detail_description")
     return {
         "id": str(product_dict["id"]),
         "name": product_dict["name"],
         "productCode": product_dict.get("product_code") or "",
         "description": product_dict.get("desc") or detail_text,
         "detailDescription": detail_text or product_dict.get("desc") or "",
+        "detailBlocks": detail_description if isinstance(detail_description, list) else [],
         "category": category_key,
         "brandName": brand_name,
-        "coverImageUrl": product_media_upload_service.serialize_stored_url(product_dict.get("cover_image_url")),
-        "imageUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("image_urls") or []],
-        "videoUrls": [product_media_upload_service.serialize_stored_url(item) for item in product_dict.get("video_urls") or []],
+        "coverImageUrl": product_media_upload_service.serialize_object_key(product_dict.get("cover_image_key")),
+        "imageUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("image_keys") or []],
+        "videoUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("video_keys") or []],
         "clickCount": product_dict.get("click_count", 0),
     }
 

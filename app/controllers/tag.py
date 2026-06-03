@@ -55,7 +55,7 @@ class TagController(CRUDBase[Tag, TagCreate, TagUpdate]):
         worksheet = workbook.active
         worksheet.title = "标签导入模板"
         worksheet.append(["标签名称", "备注", "检索次数", "排序", "是否启用"])
-        worksheet.append(["示例标签", "这是一条示例备注", 0, 0, "是"])
+        worksheet.append(["示例标签", "这是一条示例备注", 0, 0, 1])
 
         buffer = BytesIO()
         workbook.save(buffer)

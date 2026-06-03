@@ -100,6 +100,46 @@ class SiteVisit(BaseModel):
         table = "site_visit"
 
 
+class Platform(BaseModel, TimestampMixin):
+    platform_name = fields.CharField(max_length=100, description="渠道名称", index=True)
+    custom_name = fields.CharField(max_length=50, unique=True, description="自定义标识", index=True)
+    click_count = fields.IntField(default=0, description="渠道访问数据", index=True)
+
+    class Meta:
+        table = "platform"
+
+
+class SiteConfig(BaseModel, TimestampMixin):
+    logo_key = fields.CharField(max_length=500, default="", description="站点 Logo 对象 Key")
+    about_title = fields.CharField(max_length=100, default="", description="About 标题")
+    about_lines = fields.JSONField(default=list, description="About 文案段落")
+    footer_disclaimer = fields.CharField(max_length=500, default="", description="底部声明")
+    share_base_url = fields.CharField(max_length=500, default="", description="渠道分享基础链接")
+
+    class Meta:
+        table = "site_config"
+
+
+class ChannelVisit(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    platform_name_snapshot = fields.CharField(max_length=100, description="渠道名称快照")
+    custom_name = fields.CharField(max_length=50, description="自定义标识", index=True)
+    visited_at = fields.DatetimeField(auto_now_add=True, description="访问时间", index=True)
+
+    class Meta:
+        table = "channel_visit"
+
+
+class ChannelVisitDedup(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    custom_name = fields.CharField(max_length=50, description="自定义标识", index=True)
+    last_counted_at = fields.DatetimeField(description="最后计数时间", index=True)
+
+    class Meta:
+        table = "channel_visit_dedup"
+        unique_together = (("visitor_id", "custom_name"),)
+
+
 class Category(BaseModel, TimestampMixin):
     name = fields.CharField(max_length=50, unique=True, description="类目名称", index=True)
     desc = fields.CharField(max_length=255, null=True, description="类目描述")
@@ -146,9 +186,35 @@ class Contact(BaseModel, TimestampMixin):
     qr_image_url = fields.CharField(max_length=500, null=True, description="二维码图片")
     order = fields.IntField(default=0, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
+    is_deleted = fields.BooleanField(default=False, description="是否已删除", index=True)
+    deleted_at = fields.DatetimeField(null=True, description="删除时间", index=True)
 
     class Meta:
         table = "contact"
+
+
+class ContactClick(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    contact_id = fields.BigIntField(description="联系方式ID", index=True)
+    platform_snapshot = fields.CharField(max_length=50, description="平台标识快照")
+    display_name_snapshot = fields.CharField(max_length=100, description="展示名称快照")
+    contact_type_snapshot = fields.CharField(max_length=30, null=True, description="联系方式类型快照", index=True)
+    contact_value_snapshot = fields.CharField(max_length=255, null=True, description="联系方式值快照")
+    link_url_snapshot = fields.CharField(max_length=500, null=True, description="跳转链接快照")
+    clicked_at = fields.DatetimeField(auto_now_add=True, description="点击时间", index=True)
+
+    class Meta:
+        table = "contact_click"
+
+
+class ContactClickDedup(BaseModel):
+    visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
+    contact_id = fields.BigIntField(description="联系方式ID", index=True)
+    last_counted_at = fields.DatetimeField(description="最后计数时间", index=True)
+
+    class Meta:
+        table = "contact_click_dedup"
+        unique_together = (("visitor_id", "contact_id"),)
 
 
 class Banner(BaseModel, TimestampMixin):
@@ -167,13 +233,13 @@ class Product(BaseModel, TimestampMixin):
     tags = fields.ManyToManyField("models.Tag", related_name="products", through="product_tag")
     category_id = fields.BigIntField(description="类目ID", index=True)
     brand_id = fields.BigIntField(description="品牌ID", index=True)
-    name = fields.CharField(max_length=100, unique=True, description="好物名称", index=True)
+    name = fields.CharField(max_length=100, description="好物名称", index=True)
     product_code = fields.CharField(max_length=64, null=True, description="好物识别码", index=True)
     desc = fields.CharField(max_length=255, null=True, description="好物简介")
     detail_description = fields.JSONField(default=list, description="结构化详情")
-    cover_image_url = fields.CharField(max_length=500, description="封面图")
-    image_urls = fields.JSONField(default=list, description="图片列表")
-    video_urls = fields.JSONField(default=list, description="视频列表")
+    cover_image_key = fields.CharField(max_length=500, description="封面图对象 Key")
+    image_keys = fields.JSONField(default=list, description="图片对象 Key 列表")
+    video_keys = fields.JSONField(default=list, description="视频对象 Key 列表")
     click_count = fields.IntField(default=0, description="点击量", index=True)
     status = fields.BooleanField(default=True, description="是否上架", index=True)
     order = fields.IntField(default=0, description="排序", index=True)

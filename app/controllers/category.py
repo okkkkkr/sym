@@ -35,7 +35,7 @@ class CategoryController(CRUDBase[Category, CategoryCreate, CategoryUpdate]):
         worksheet = workbook.active
         worksheet.title = "分类导入模板"
         worksheet.append(["分类名称", "分类描述", "排序", "是否启用"])
-        worksheet.append(["示例分类", "这是一条示例分类描述", 0, "是"])
+        worksheet.append(["示例分类", "这是一条示例分类描述", 0, 1])
 
         buffer = BytesIO()
         workbook.save(buffer)

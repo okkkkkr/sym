@@ -212,7 +212,7 @@ function productLink(product) {
         </div>
       </div>
       <div v-else class="product-showcase__empty">
-        <a-empty description="No products found" />
+        <a-empty description="No items found" />
       </div>
     </a-spin>
   </section>

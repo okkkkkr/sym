@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from tortoise.expressions import Q
 
 from app.controllers.contact import contact_controller
+from app.models.admin import Contact
+from app.models import User
+from app.core.dependency import DependAuth
+from app.services.product_media_upload import product_media_upload_service
 from app.schemas.base import Success, SuccessExtra
-from app.schemas.contacts import ContactCreate, ContactUpdate
+from app.schemas.contacts import ContactCreate, ContactQrUploadTokenIn, ContactUpdate
 
 router = APIRouter()
 
@@ -18,7 +22,7 @@ async def list_contact(
     sort_field: str | None = Query(None, description="排序字段"),
     sort_order: str | None = Query(None, description="排序方向 asc/desc"),
 ):
-    q = Q()
+    q = Q(is_deleted=False)
     if keyword:
         q &= Q(platform__contains=keyword) | Q(display_name__contains=keyword) | Q(contact_value__contains=keyword)
     if contact_type:
@@ -32,14 +36,28 @@ async def list_contact(
         allowed_fields={"updated_at", "platform", "display_name", "order", "is_active"},
     )
     total, contact_objs = await contact_controller.list(page=page, page_size=page_size, search=q, order=order)
-    data = [await obj.to_dict() for obj in contact_objs]
+    data = [await contact_controller.serialize(obj, include_preview=True) for obj in contact_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
 
 @router.get("/get", summary="查看联系方式")
 async def get_contact(id: int = Query(..., description="联系方式ID")):
-    contact_obj = await contact_controller.get(id=id)
-    return Success(data=await contact_obj.to_dict())
+    contact_obj = await Contact.filter(id=id, is_deleted=False).first()
+    if not contact_obj:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return Success(data=await contact_controller.serialize(contact_obj, include_preview=True))
+
+
+@router.post("/qr/upload-token", summary="获取联系方式二维码上传凭证")
+async def get_contact_qr_upload_token(payload: ContactQrUploadTokenIn, current_user: User = DependAuth):
+    _ = current_user
+    return Success(
+        data=product_media_upload_service.create_upload_credentials(
+            file_name=payload.file_name,
+            media_type="contact_qr",
+            content_type=payload.content_type,
+        )
+    )
 
 
 @router.post("/create", summary="创建联系方式")

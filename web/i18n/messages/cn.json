@@ -39,6 +39,7 @@
       "label_top_product_clicks": "好物点击量前 10",
       "label_top_brand_searches": "品牌检索量前 10",
       "label_top_banner_clicks": "横幅点击量前 10",
+      "label_top_channel_visits": "渠道访问数据前 10",
       "label_visit_trend": "近7日访问趋势",
       "label_today_activity": "今日操作",
       "label_health_overview": "业务健康度",

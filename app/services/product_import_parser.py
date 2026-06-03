@@ -12,6 +12,7 @@ from app.schemas.product_import import ProductImportParseResult, ProductImportPa
 class ProductImportParserService:
     EXPECTED_HEADERS = [
         "name",
+        "material_dir",
         "category_name",
         "brand_name",
         "desc",
@@ -24,11 +25,12 @@ class ProductImportParserService:
     ]
     DISPLAY_HEADERS = {
         "name": "名称",
+        "material_dir": "素材目录",
         "category_name": "所属分类",
         "brand_name": "所属品牌",
         "desc": "简介",
         "tag_names": "标签",
-        "product_code_custom": "自定义识别码",
+        "product_code_custom": "好物识别码",
         "status": "上架状态",
         "order": "排序",
         "detail_text": "详情文本",
@@ -43,7 +45,7 @@ class ProductImportParserService:
         for key, aliases in HEADER_ALIASES.items()
         for alias in aliases
     }
-    REQUIRED_HEADERS = ["name", "category_name", "brand_name"]
+    REQUIRED_HEADERS = ["name", "material_dir", "category_name", "brand_name"]
     STATUS_TRUE_VALUES = {"true", "1", "是", "yes"}
     STATUS_FALSE_VALUES = {"false", "0", "否", "no"}
 
@@ -98,6 +100,10 @@ class ProductImportParserService:
                     valid_rows += 1
                 parsed_rows.append(row)
 
+            self._validate_material_dirs(parsed_rows)
+            valid_rows = sum(1 for row in parsed_rows if not row.errors)
+            invalid_rows = len(parsed_rows) - valid_rows
+
             return ProductImportParseResult(
                 headers=headers,
                 rows=parsed_rows,
@@ -110,6 +116,7 @@ class ProductImportParserService:
 
     def _build_row(self, *, row_no: int, values, header_index: dict[str, int]) -> ProductImportParsedRow:
         name = self._get_cell(values, header_index, "name")
+        material_dir = self._get_cell(values, header_index, "material_dir")
         category_name = self._get_cell(values, header_index, "category_name")
         brand_name = self._get_cell(values, header_index, "brand_name")
         detail_text = self._get_cell(values, header_index, "detail_text")
@@ -122,6 +129,7 @@ class ProductImportParserService:
         row = ProductImportParsedRow(
             row_no=row_no,
             name=name,
+            material_dir=material_dir,
             category_name=category_name,
             brand_name=brand_name,
             desc=self._empty_to_none(self._get_cell(values, header_index, "desc")),
@@ -150,6 +158,8 @@ class ProductImportParserService:
     ) -> None:
         if not row.name:
             row.errors.append("名称不能为空")
+        if not row.material_dir:
+            row.errors.append("素材目录不能为空")
         if not row.category_name:
             row.errors.append("所属分类不能为空")
         if not row.brand_name:
@@ -184,8 +194,20 @@ class ProductImportParserService:
         normalized_name = self._normalize_name(row.name)
         if normalized_name and normalized_name in existing_products:
             row.duplicate_hint = True
-            row.errors.append("好物名称已存在")
             row.warnings.append("检测到同名好物")
+
+    def _validate_material_dirs(self, rows: list[ProductImportParsedRow]) -> None:
+        material_dir_count: dict[str, int] = {}
+        for row in rows:
+            normalized_dir = self._normalize_name(row.material_dir)
+            if not normalized_dir:
+                continue
+            material_dir_count[normalized_dir] = material_dir_count.get(normalized_dir, 0) + 1
+
+        for row in rows:
+            normalized_dir = self._normalize_name(row.material_dir)
+            if normalized_dir and material_dir_count.get(normalized_dir, 0) > 1:
+                row.errors.append("素材目录重复，请为每条好物指定唯一素材目录")
 
     @staticmethod
     def _normalize_cell_value(value) -> str:

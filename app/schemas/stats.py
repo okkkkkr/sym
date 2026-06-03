@@ -41,5 +41,30 @@ class TrackSiteVisitIn(BaseModel):
         return value.strip()[:255]
 
 
+class TrackChannelVisitIn(BaseModel):
+    visitor_id: str = Field(..., min_length=8, max_length=64, description="访客标识")
+    plat: str | None = Field(None, max_length=50, description="渠道标识")
+
+    @field_validator("visitor_id")
+    @classmethod
+    def normalize_visitor_id(cls, value: str):
+        return value.strip()
+
+    @field_validator("plat")
+    @classmethod
+    def normalize_plat(cls, value: str | None):
+        return str(value or "").strip()[:50]
+
+
+class TrackContactClickIn(BaseModel):
+    visitor_id: str = Field(..., min_length=8, max_length=64, description="访客标识")
+    contact_id: int = Field(..., ge=1, description="联系方式ID")
+
+    @field_validator("visitor_id")
+    @classmethod
+    def normalize_visitor_id(cls, value: str):
+        return value.strip()
+
+
 class TrackBannerClickIn(BaseModel):
     banner_id: int = Field(..., ge=1, description="横幅ID")

@@ -92,6 +92,7 @@ const rankingState = ref({
   productClicks: [],
   brandSearches: [],
   bannerClicks: [],
+  channelVisits: [],
 })
 
 const statisticData = computed(() => [
@@ -171,6 +172,15 @@ const rankingPanels = computed(() => [
     getMeta: (item) => item.note || item.link_url || t('views.workbench.text_rank_no_meta'),
     getValue: (item) => item.click_count || 0,
   },
+  {
+    id: 'channel-visit',
+    title: t('views.workbench.label_top_channel_visits'),
+    routeName: '渠道访问数据',
+    items: rankingState.value.channelVisits,
+    getTitle: (item) => item.platform_name || '-',
+    getMeta: (item) => item.custom_name || t('views.workbench.text_rank_no_meta'),
+    getValue: (item) => item.click_count || 0,
+  },
 ])
 
 function navigateToRoute(routeName) {
@@ -214,16 +224,18 @@ async function fetchDashboardData() {
 
 async function fetchRankingData() {
   try {
-    const [productRes, brandRes, bannerRes] = await Promise.all([
+    const [productRes, brandRes, bannerRes, channelRes] = await Promise.all([
       api.getProductClickStatsList({ page: 1, page_size: 10 }),
       api.getBrandSearchStatsList({ page: 1, page_size: 10 }),
       api.getBannerClickStatsList({ page: 1, page_size: 10 }),
+      api.getChannelVisitStatsList({ page: 1, page_size: 10 }),
     ])
 
     rankingState.value = {
       productClicks: productRes?.data || [],
       brandSearches: brandRes?.data || [],
       bannerClicks: bannerRes?.data || [],
+      channelVisits: channelRes?.data || [],
     }
   } catch (error) {
     console.error('fetchRankingData error', error)
@@ -302,7 +314,7 @@ onMounted(() => {
 
 .ranking-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 

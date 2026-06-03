@@ -12,17 +12,15 @@ const activeIndex = ref(0);
 const thumbRefs = ref([]);
 const product = ref(null)
 const relatedProducts = ref([])
-const brandName = ref('SYM Studio')
+const brandName = ref('')
 const categoryLabelText = ref('')
 
-const categoryKey = computed(
-  () =>
-    product.value?.category ??
-    String(route.query.category ?? "").toLowerCase(),
-);
-const categoryLabel = computed(
-  () => categoryLabelText.value || String(categoryKey.value || 'products').toUpperCase(),
-);
+const categoryLabel = computed(() => String(categoryLabelText.value || '').trim())
+const detailBlocks = computed(() =>
+  Array.isArray(product.value?.detailBlocks)
+    ? product.value.detailBlocks.filter((item) => item && typeof item === 'object')
+    : []
+)
 
 const gallery = computed(() => {
   if (!product.value) {
@@ -106,12 +104,13 @@ async function loadProduct() {
     categoryLabelText.value = payload.categoryLabel || ''
     product.value = payload.product
     relatedProducts.value = payload.relatedProducts || []
-    brandName.value = payload.brandName || 'SYM Studio'
+    brandName.value = payload.brandName || ''
     reportProductClick(route.params.productId)
   } catch (error) {
     categoryLabelText.value = ''
     product.value = null
     relatedProducts.value = []
+    brandName.value = ''
     message.error(error.message)
   }
 }
@@ -204,12 +203,12 @@ watch(() => route.params.productId, () => {
 
       <aside class="product-detail__info">
         <h1>{{ product.name }}</h1>
-        <p class="product-detail__brand">Brand: {{ brandName }}</p>
+        <p v-if="brandName" class="product-detail__brand">Brand: {{ brandName }}</p>
         <p class="product-detail__description">
           {{ product.detailDescription ?? product.description }}
         </p>
 
-        <div class="product-detail__meta">
+        <div v-if="categoryLabel" class="product-detail__meta">
           <p>
             Category:
             <RouterLink :to="categoryLink(product.category)">{{
@@ -218,6 +217,25 @@ watch(() => route.params.productId, () => {
           </p>
         </div>
       </aside>
+    </section>
+
+    <section v-if="detailBlocks.length" class="product-detail__blocks page-container">
+      <div
+        v-for="(block, index) in detailBlocks"
+        :key="`${product.id}-detail-${index}`"
+        class="product-detail__block"
+      >
+        <h2 v-if="block.title" class="product-detail__block-title">{{ block.title }}</h2>
+        <p v-if="block.type !== 'image' && block.content" class="product-detail__block-text">
+          {{ block.content }}
+        </p>
+        <img
+          v-if="block.type === 'image' && block.url"
+          :src="block.url"
+          :alt="block.title || product.name"
+          class="product-detail__block-image"
+        />
+      </div>
     </section>
 
     <section
@@ -240,7 +258,7 @@ watch(() => route.params.productId, () => {
     </div>
 
     <section class="product-detail__empty page-container">
-      <h1>Product not found</h1>
+      <h1>Item not found</h1>
       <p>The requested item does not exist or is no longer available.</p>
     </section>
   </template>
@@ -450,6 +468,39 @@ watch(() => route.params.productId, () => {
 
 .product-detail__meta a {
   font-weight: 700;
+}
+
+.product-detail__blocks {
+  display: grid;
+  gap: 20px;
+  padding: 40px 24px 0;
+}
+
+.product-detail__block {
+  border-top: 1px solid rgba(17, 17, 17, 0.12);
+  padding-top: 20px;
+}
+
+.product-detail__block-title {
+  margin: 0 0 12px;
+  color: #111111;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.product-detail__block-text {
+  margin: 0;
+  color: #3e3e3e;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.product-detail__block-image {
+  display: block;
+  width: min(100%, 720px);
+  border-radius: 20px;
+  object-fit: cover;
 }
 
 .product-detail__empty {

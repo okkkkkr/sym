@@ -2,15 +2,22 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
+import { useContactPopoverTracking } from '../../composables/useContactPopoverTracking'
+import { useSiteConfig } from '../../composables/useSiteConfig'
 import { fetchCatalogCategories } from '../../services/catalog'
 import { fetchActiveContacts } from '../../services/contacts'
 
 const isSmallScreen = ref(false);
 const categories = ref([])
 const contacts = ref([])
+const { siteConfig, loadSiteConfig } = useSiteConfig()
+const { handleContactPopoverChange, disposeContactPopoverTracking } = useContactPopoverTracking(isSmallScreen)
 const contactPopoverTrigger = computed(() =>
   isSmallScreen.value ? "click" : "hover",
 );
+const aboutTitle = computed(() => siteConfig.value.about_title)
+const aboutLines = computed(() => siteConfig.value.about_lines)
+const footerDisclaimer = computed(() => siteConfig.value.footer_disclaimer)
 
 let mediaQuery;
 
@@ -22,9 +29,17 @@ function updateSmallScreenState(event) {
   isSmallScreen.value = event.matches;
 }
 
+function handleContactLinkClick(item, event) {
+  if (!item?.link_url) {
+    event?.preventDefault()
+  }
+}
+
 onMounted(() => {
   mediaQuery = window.matchMedia("(max-width: 900px)");
   isSmallScreen.value = mediaQuery.matches;
+
+  loadSiteConfig().catch(() => {})
 
   fetchCatalogCategories()
     .then((data) => {
@@ -51,6 +66,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  disposeContactPopoverTracking()
   if (!mediaQuery) {
     return;
   }
@@ -68,13 +84,9 @@ onBeforeUnmount(() => {
 <template>
   <footer class="site-footer">
     <div class="page-container site-footer__grid">
-      <section class="site-footer__brand">
-        <h3>About</h3>
-        <p>I am very happy to share the things I like with you.</p>
-        <p>
-          If you want to communicate with me, you can contact me through the
-          methods.
-        </p>
+      <section v-if="aboutTitle || aboutLines.length" class="site-footer__brand">
+        <h3 v-if="aboutTitle">{{ aboutTitle }}</h3>
+        <p v-for="(line, index) in aboutLines" :key="`${index}-${line}`">{{ line }}</p>
       </section>
       <section class="site-footer__contact">
         <h3>Contact</h3>
@@ -85,6 +97,7 @@ onBeforeUnmount(() => {
           :trigger="contactPopoverTrigger"
           placement="right"
           overlay-class-name="contact-popover"
+          @openChange="(open) => handleContactPopoverChange(item, open)"
         >
           <template #content>
             <div class="contact-popover__body">
@@ -96,7 +109,7 @@ onBeforeUnmount(() => {
 
           <span class="site-footer__contact-trigger">
             <div class="site-footer__contact-item">
-              <a :href="item.link_url || '#'" class="site-footer__link">{{ item.display_name }}</a>
+              <a :href="item.link_url || '#'" class="site-footer__link" @click="handleContactLinkClick(item, $event)">{{ item.display_name }}</a>
             </div>
           </span>
         </a-popover>
@@ -108,8 +121,8 @@ onBeforeUnmount(() => {
         </ul>
       </section>
     </div>
-    <div class="page-container site-footer__bottom">
-      <span>This website is for learning and collection purposes, with no commercial use.</span>
+    <div v-if="footerDisclaimer" class="page-container site-footer__bottom">
+      <span>{{ footerDisclaimer }}</span>
     </div>
   </footer>
 </template>

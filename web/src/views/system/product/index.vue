@@ -44,6 +44,8 @@ const DEFAULT_DETAIL_DESCRIPTION = JSON.stringify(
 )
 
 let uploadFileSeed = 0
+const mediaIndexPattern = /_(\d+)(?:\.[^.]+)?$/
+const uuidPrefixPattern = /^[0-9a-f]{32}_(.+)$/i
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -61,8 +63,11 @@ const modalAction = ref('add')
 const modalFormRef = ref(null)
 const statusUpdatingIds = ref([])
 const vPermission = resolveDirective('permission')
-const actionCellStyle = 'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
-const hasActiveFilters = computed(() => Object.values(queryItems.value).some(isEffectiveFilterValue))
+const actionCellStyle =
+  'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
+const hasActiveFilters = computed(() =>
+  Object.values(queryItems.value).some(isEffectiveFilterValue)
+)
 
 function isEffectiveFilterValue(value) {
   if (Array.isArray(value)) return value.length > 0
@@ -107,10 +112,14 @@ const rules = {
     message: '请输入好物名称',
     trigger: ['input', 'blur'],
   },
+  product_code_custom: {
+    validator: () => true,
+    trigger: ['input', 'blur'],
+  },
   cover_file_list: {
     required: true,
     validator: (_, value) => {
-      if (buildUploadUrls(value).length) return true
+      if (buildUploadKeys(value).length) return true
       return new Error('请上传封面图')
     },
     trigger: ['change', 'blur'],
@@ -186,6 +195,39 @@ function getFileNameFromUrl(url, prefix = 'file') {
   return decodeURIComponent(fileName || `${prefix}-${uploadFileSeed}`)
 }
 
+function getMediaSortName(value) {
+  const fileName = getFileNameFromUrl(value)
+  const matched = fileName.match(uuidPrefixPattern)
+  return matched?.[1] || fileName
+}
+
+function getMediaSortIndex(value) {
+  const matched = getMediaSortName(value).match(mediaIndexPattern)
+  return matched ? Number(matched[1]) : null
+}
+
+function compareMediaOrder(left, right) {
+  const leftName = getMediaSortName(left).toLowerCase()
+  const rightName = getMediaSortName(right).toLowerCase()
+  const leftIndex = getMediaSortIndex(left)
+  const rightIndex = getMediaSortIndex(right)
+  if (leftIndex !== null && rightIndex !== null && leftIndex !== rightIndex) {
+    return leftIndex - rightIndex
+  }
+  if (leftIndex !== null) return -1
+  if (rightIndex !== null) return 1
+  return leftName.localeCompare(rightName)
+}
+
+function sortUploadFileList(fileList = []) {
+  return [...fileList].sort((left, right) =>
+    compareMediaOrder(
+      left?.rawUrl || left?.name || left?.url || left?.thumbnailUrl || '',
+      right?.rawUrl || right?.name || right?.url || right?.thumbnailUrl || ''
+    )
+  )
+}
+
 function isImageUploadPrefix(prefix = 'file') {
   return prefix === 'cover' || prefix === 'image'
 }
@@ -205,35 +247,47 @@ function decorateUploadFile(file, prefix = 'file') {
 
 function createUploadFile(url, prefix = 'file', rawUrl = url) {
   if (!url) return null
-  return decorateUploadFile({
-    id: nextUploadFileId(prefix),
-    name: getFileNameFromUrl(url, prefix),
-    status: 'finished',
-    url,
-    rawUrl,
-  }, prefix)
+  return decorateUploadFile(
+    {
+      id: nextUploadFileId(prefix),
+      name: getFileNameFromUrl(url, prefix),
+      status: 'finished',
+      url,
+      rawUrl,
+    },
+    prefix
+  )
 }
 
 function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
-  return urls.map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url)).filter(Boolean)
+  return urls
+    .map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url))
+    .filter(Boolean)
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
-  return fileList
+  const normalizedList = fileList
     .filter((item) => item?.status !== 'removed')
     .map((item) => {
       if (item.url || item.thumbnailUrl) return decorateUploadFile(item, prefix)
       const objectUrl = item.file ? URL.createObjectURL(item.file) : ''
       return objectUrl ? decorateUploadFile({ ...item, url: objectUrl }, prefix) : item
     })
+  return prefix === 'image' ? sortUploadFileList(normalizedList) : normalizedList
 }
 
-function buildUploadUrls(fileList = []) {
-  return normalizeUploadFileList(fileList)
+function buildUploadKeys(fileList = []) {
+  const uploadKeys = normalizeUploadFileList(fileList)
     .filter((item) => !item?.status || item.status === 'finished')
     .map((item) => String(item.rawUrl || item.url || item.thumbnailUrl || '').trim())
     .filter((url) => !url.startsWith('blob:'))
     .filter(Boolean)
+  return sortUploadFileList(
+    uploadKeys.map((item) => ({
+      rawUrl: item,
+      name: getFileNameFromUrl(item),
+    }))
+  ).map((item) => item.rawUrl)
 }
 
 function syncUploadField(fieldName, prefix) {
@@ -247,9 +301,8 @@ function applyUploadedFile(fieldName, prefix, file, url) {
   if (url && isImageUploadPrefix(prefix)) {
     file.thumbnailUrl = url
   }
-  file.rawUrl = url
   if (!file.name) {
-    file.name = getFileNameFromUrl(url, prefix)
+    file.name = getFileNameFromUrl(file.rawUrl || url, prefix)
   }
   Object.assign(file, decorateUploadFile(file, prefix))
   syncUploadField(fieldName, prefix)
@@ -292,8 +345,8 @@ function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
         xhr.send(formData)
       })
 
+      file.rawUrl = credential.data.object_key
       applyUploadedFile(fieldName, prefix, file, credential.data.preview_url || credential.data.url)
-      file.rawUrl = credential.data.url
       onFinish()
     } catch (error) {
       syncUploadField(fieldName, prefix)
@@ -531,10 +584,10 @@ function openEditModal(row) {
     cover_file_list: buildPresetUploadList(
       row.cover_image_url ? [row.cover_image_url] : [],
       'cover',
-      row.cover_image_storage_url ? [row.cover_image_storage_url] : []
+      row.cover_image_key ? [row.cover_image_key] : []
     ),
-    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_storage_urls || []),
-    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_storage_urls || []),
+    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_keys || []),
+    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_keys || []),
     click_count: row.click_count || 0,
     status: row.status,
     order: row.order || 0,
@@ -578,8 +631,8 @@ function buildProductPayload() {
     throw new Error('detail_description 需要使用 JSON 数组结构')
   }
 
-  const coverUrls = buildUploadUrls(modalForm.value.cover_file_list)
-  if (!coverUrls.length) {
+  const coverKeys = buildUploadKeys(modalForm.value.cover_file_list)
+  if (!coverKeys.length) {
     throw new Error('请上传封面图')
   }
 
@@ -591,9 +644,9 @@ function buildProductPayload() {
     product_code_custom: String(modalForm.value.product_code_custom || '').trim(),
     desc: modalForm.value.desc.trim(),
     detail_description: detailDescription,
-    cover_image_url: coverUrls[0],
-    image_urls: buildUploadUrls(modalForm.value.image_file_list),
-    video_urls: buildUploadUrls(modalForm.value.video_file_list),
+    cover_image_key: coverKeys[0],
+    image_keys: buildUploadKeys(modalForm.value.image_file_list),
+    video_keys: buildUploadKeys(modalForm.value.video_file_list),
     click_count: Number(modalForm.value.click_count || 0),
     status: !!modalForm.value.status,
     order: Number(modalForm.value.order || 0),
@@ -697,9 +750,9 @@ async function toggleStatus(row, nextValue) {
     product_code_custom: row.product_code_custom || '',
     desc: row.desc || '',
     detail_description: row.detail_description || [],
-    cover_image_url: row.cover_image_storage_url || row.cover_image_url,
-    image_urls: row.image_storage_urls || row.image_urls || [],
-    video_urls: row.video_storage_urls || row.video_urls || [],
+    cover_image_key: row.cover_image_key || '',
+    image_keys: row.image_keys || [],
+    video_keys: row.video_keys || [],
     click_count: row.click_count || 0,
     status: nextValue,
     order: row.order || 0,
@@ -716,13 +769,27 @@ function goToProductImport() {
 <template>
   <CommonPage show-footer title="好物列表">
     <template #action>
-      <NButton v-permission="'get/api/v1/product/import/tasks'" type="default" @click="goToProductImport">
+      <NButton
+        v-permission="'get/api/v1/product/import/tasks'"
+        type="default"
+        @click="goToProductImport"
+      >
         <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />去批量导入
       </NButton>
-      <NButton v-permission="'post/api/v1/product/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
+      <NButton
+        v-permission="'post/api/v1/product/export'"
+        type="default"
+        :loading="exportLoading"
+        @click="openBatchExportModal"
+      >
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
       </NButton>
-      <NButton v-permission="'delete/api/v1/product/delete'" type="error" secondary @click="openBatchDeleteModal">
+      <NButton
+        v-permission="'delete/api/v1/product/delete'"
+        type="error"
+        secondary
+        @click="openBatchDeleteModal"
+      >
         <TheIcon icon="material-symbols:delete-outline" :size="18" class="mr-5" />批量删除
       </NButton>
       <NButton v-permission="'post/api/v1/product/create'" type="primary" @click="openAddModal">
@@ -800,7 +867,7 @@ function goToProductImport() {
               <NInput
                 v-model:value="modalForm.product_code_custom"
                 clearable
-                placeholder="请输入自定义数字，例如 666"
+                placeholder="请输入自定义字符串，例如 SKU-666"
               />
             </NFormItem>
             <NFormItem label="所属分类" path="category_id">
@@ -812,20 +879,29 @@ function goToProductImport() {
               />
             </NFormItem>
             <NFormItem label="所属品牌" path="brand_id">
-              <NSelect v-model:value="modalForm.brand_id" :options="modalBrandOptions" placeholder="请选择所属品牌" />
+              <NSelect
+                v-model:value="modalForm.brand_id"
+                :options="modalBrandOptions"
+                placeholder="请选择所属品牌"
+              />
             </NFormItem>
             <NFormItem label="关联标签" path="tag_ids">
               <NSelect
                 v-model:value="modalForm.tag_ids"
-                multiple
-                filterable
                 clearable
+                filterable
+                multiple
                 :options="tagOptions"
                 placeholder="请选择标签"
               />
             </NFormItem>
             <NFormItem label="好物简介" path="desc">
-              <NInput v-model:value="modalForm.desc" type="textarea" :rows="3" placeholder="请输入好物简介" />
+              <NInput
+                v-model:value="modalForm.desc"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入好物简介"
+              />
             </NFormItem>
             <NFormItem label="封面图" path="cover_file_list">
               <NUpload

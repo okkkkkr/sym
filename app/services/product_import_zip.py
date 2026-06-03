@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.schemas.product_import import ProductImportMaterialSet
 from app.settings import settings
+from app.utils.product_media import sort_media_paths
 
 
 class ProductImportZipService:
@@ -117,11 +118,12 @@ class ProductImportZipService:
                 elif suffix in self.VIDEO_EXTENSIONS:
                     videos.append(child_path)
 
-            cover_image = self._pick_cover_image(images)
+            sorted_images = sort_media_paths(images)
+            cover_image = self._pick_cover_image(sorted_images)
             material_map[entry] = ProductImportMaterialSet(
                 directory_name=entry,
                 cover_image=cover_image,
-                images=images,
+                images=sorted_images,
                 videos=videos,
             )
         return material_map

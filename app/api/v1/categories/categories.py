@@ -57,10 +57,10 @@ def build_category_search(name: str = "", is_active=None) -> tuple[Q, bool]:
 
 
 def normalize_import_bool(value: Any, row_index: int) -> bool:
-    normalized = str(value or "true").strip().lower()
-    if normalized not in {"true", "false", "1", "0", "是", "否"}:
-        raise HTTPException(status_code=400, detail=f"第 {row_index} 行是否启用值不合法")
-    return normalized in {"true", "1", "是"}
+    normalized = str(value or "1").strip()
+    if normalized not in {"1", "0"}:
+        raise HTTPException(status_code=400, detail=f"第 {row_index} 行是否启用值不合法，仅支持 1/0")
+    return normalized == "1"
 
 
 async def resolve_category_ids(payload: DeleteIdsIn) -> list[int]:

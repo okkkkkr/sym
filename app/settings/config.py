@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
-    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 1024 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 2 * 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     PRODUCT_IMPORT_CHUNK_SIZE: int = 5 * 1024 * 1024
     PRODUCT_IMPORT_MAX_CONCURRENCY: int = 2
@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     QINIU_REGION: str = ""
     QINIU_IS_PRIVATE: bool = False
     QINIU_URL_EXPIRE_SECONDS: int = 3600
+    QINIU_UPLOAD_TIMEOUT_SECONDS: int = 300
+    PUBLIC_SITE_URL: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"

@@ -18,7 +18,7 @@ from app.core.dependency import DependAuth
 from app.log import logger
 from app.models import User
 from app.models.enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductImportTaskStatus
-from app.schemas.base import Success, SuccessExtra
+from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
 from app.services import artifact_storage_service, product_import_upload_service
 from app.settings import settings
@@ -29,6 +29,7 @@ router = APIRouter(prefix="/import")
 
 PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "name",
+    "material_dir",
     "category_name",
     "brand_name",
     "desc",
@@ -36,15 +37,18 @@ PRODUCT_IMPORT_TEMPLATE_FIELDS = [
     "product_code_custom",
     "status",
     "order",
+    "detail_text",
+    "detail_description_json",
 ]
 
 PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
     "name": "名称",
+    "material_dir": "素材目录",
     "category_name": "所属分类",
     "brand_name": "所属品牌",
     "desc": "简介",
     "tag_names": "标签",
-    "product_code_custom": "自定义识别码",
+    "product_code_custom": "好物识别码",
     "status": "上架状态",
     "order": "排序",
     "detail_text": "详情文本",
@@ -58,13 +62,16 @@ PRODUCT_IMPORT_TEMPLATE_HEADERS = [
 
 PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
     "示例好物A",
+    "示例好物A",
     "示例分类",
     "示例品牌",
     "这是一条示例简介",
     "标签A;标签B",
-    "1001",
+    "SKU-A1001",
     "1",
     0,
+    "这是一条示例详情文本",
+    "",
 ]
 
 SAMPLE_PNG_BYTES = b64decode(
@@ -128,6 +135,32 @@ def build_product_import_example_zip() -> bytes:
     return buffer.getvalue()
 
 
+async def build_active_task_summary(task) -> dict:
+    data = await task.to_dict()
+    creator = await User.get_or_none(id=task.created_by)
+    display_name = (creator.alias or creator.username).strip() if creator else ""
+    data["created_by_name"] = display_name or f"管理员 #{task.created_by}"
+    return data
+
+
+async def get_active_task_summary(exclude_task_id: int | None = None) -> dict | None:
+    task = await product_import_task_controller.get_active_task(exclude_task_id=exclude_task_id)
+    if task is None:
+        return None
+    return await build_active_task_summary(task)
+
+
+async def build_active_task_conflict(exclude_task_id: int | None = None) -> Fail | None:
+    active_task = await get_active_task_summary(exclude_task_id=exclude_task_id)
+    if active_task is None:
+        return None
+    return Fail(
+        code=409,
+        msg="系统已有进行中的好物导入任务，请等待完成或取消后再试",
+        data={"active_task": active_task},
+    )
+
+
 @router.post("/upload-init", summary="初始化好物导入上传")
 async def init_product_import_upload(payload: ProductImportUploadInitIn, current_user: User = DependAuth):
     if not payload.filename.lower().endswith(".zip"):
@@ -141,6 +174,10 @@ async def init_product_import_upload(payload: ProductImportUploadInitIn, current
         import_strategy = ProductImportStrategy(payload.import_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="导入策略不合法") from exc
+
+    conflict = await build_active_task_conflict()
+    if conflict is not None:
+        return conflict
 
     task = await product_import_task_controller.create_task(
         filename=payload.filename,
@@ -214,6 +251,9 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     merged_meta = await product_import_upload_service.complete_upload(payload.upload_id)
     task_id = int(merged_meta["task_id"])
     merged_file_path = merged_meta["merged_file_path"]
+    conflict = await build_active_task_conflict(exclude_task_id=task_id)
+    if conflict is not None:
+        return conflict
     try:
         storage_key = await artifact_storage_service.upload_file(
             merged_file_path,
@@ -255,6 +295,12 @@ def build_task_search(status: str | None, current_user: User) -> Q:
     if not current_user.is_superuser:
         query &= Q(created_by=current_user.id)
     return query
+
+
+@router.get("/active-task", summary="查看系统当前进行中的好物导入任务")
+async def get_active_product_import_task(current_user: User = DependAuth):
+    del current_user
+    return Success(data=await get_active_task_summary())
 
 
 def resolve_task_source_path(storage_key: str) -> str | None:
@@ -388,6 +434,9 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可重试任务")
     ensure_task_source_available(task.storage_key)
+    conflict = await build_active_task_conflict(exclude_task_id=task.id)
+    if conflict is not None:
+        return conflict
 
     await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
     await product_import_task_controller.update(
@@ -421,6 +470,9 @@ async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, c
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可重试失败项")
     ensure_task_source_available(task.storage_key)
+    conflict = await build_active_task_conflict()
+    if conflict is not None:
+        return conflict
 
     failed_row_nos = await product_import_task_item_controller.model.filter(
         task_id=payload.task_id,

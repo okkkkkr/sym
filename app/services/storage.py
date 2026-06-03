@@ -70,7 +70,7 @@ class QiniuStorageService(StorageService):
         upload_url = product_media_upload_service._normalize_upload_host()
         try:
             with open(local_path, "rb") as file_obj:
-                async with httpx.AsyncClient(timeout=None) as client:
+                async with httpx.AsyncClient(timeout=max(1, settings.QINIU_UPLOAD_TIMEOUT_SECONDS)) as client:
                     response = await client.post(
                         upload_url,
                         data={"token": upload_token, "key": object_key},
@@ -80,7 +80,10 @@ class QiniuStorageService(StorageService):
         except httpx.HTTPStatusError as exc:
             raise HTTPException(status_code=502, detail=self._format_qiniu_error(exc.response)) from exc
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"七牛上传请求失败: {exc}") from exc
+            raise HTTPException(
+                status_code=502,
+                detail=f"七牛上传请求失败: {str(exc).strip() or exc.__class__.__name__}",
+            ) from exc
 
         return product_media_upload_service.build_public_url(object_key)
 

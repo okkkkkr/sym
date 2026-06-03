@@ -23,6 +23,7 @@ from app.services import (
 )
 from app.settings import settings
 from app.utils.excel_export import build_xlsx_content
+from app.utils.product_media import sort_media_keys
 
 
 async def ensure_tortoise_initialized() -> None:
@@ -42,18 +43,16 @@ def build_media_object_key(product_name: str, local_path: str, media_type: str) 
     prefix = "items/videos" if media_type == "video" else "items/images"
     product_slug = sanitize_object_key_part(product_name, fallback="product")
     filename = sanitize_object_key_part(Path(local_path).name)
-    return f"{prefix}/imports/{product_slug}/{uuid4().hex}_{filename}"
+    return f"{prefix}/{product_slug}/{uuid4().hex}_{filename}"
 
 
 async def upload_media_files(product_name: str, file_paths: list[str], media_type: str) -> list[dict[str, str]]:
     uploads: list[dict[str, str]] = []
     media_label = "视频" if media_type == "video" else "图片"
     for file_path in file_paths:
+        object_key = build_media_object_key(product_name, file_path, media_type)
         try:
-            url = await media_storage_service.upload_file(
-                file_path,
-                build_media_object_key(product_name, file_path, media_type),
-            )
+            await media_storage_service.upload_file(file_path, object_key)
         except HTTPException as exc:
             raise HTTPException(
                 status_code=exc.status_code,
@@ -64,7 +63,7 @@ async def upload_media_files(product_name: str, file_paths: list[str], media_typ
                 status_code=500,
                 detail=f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}",
             ) from exc
-        uploads.append({"path": file_path, "url": url})
+        uploads.append({"path": file_path, "object_key": object_key})
     return uploads
 
 
@@ -72,7 +71,7 @@ async def generate_error_report(task_id: int) -> str | None:
     items = await product_import_task_item_controller.model.filter(task_id=task_id).order_by("row_no", "id")
     error_rows = []
     for item in items:
-        if item.status == ProductImportTaskItemStatus.SUCCESS:
+        if item.status != ProductImportTaskItemStatus.FAILED:
             continue
         error_rows.append(
             [
@@ -212,7 +211,8 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
     invalid_rows = 0
 
     try:
-        await product_import_task_controller.mark_running(task_id)
+        if (await product_import_task_controller.mark_running(task_id)).status == ProductImportTaskStatus.CANCELED:
+            return
 
         product_import_zip_service.validate_zip(zip_path)
         extract_dir = product_import_zip_service.extract_to_temp(zip_path, task_id)
@@ -254,10 +254,10 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                 duplicate_hint=row.duplicate_hint,
             )
 
-            material_set = material_map.get(row.name)
+            material_set = material_map.get(row.material_dir)
             row_errors = list(row.errors)
             if material_set is None:
-                row_errors.append("未找到与名称对应的素材目录")
+                row_errors.append("未找到与素材目录对应的素材文件夹")
             else:
                 if not material_set.images:
                     row_errors.append("素材目录至少需要一张图片")
@@ -281,27 +281,38 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             try:
                 image_uploads = await upload_media_files(row.name, material_set.images, "image")
                 video_uploads = await upload_media_files(row.name, material_set.videos, "video")
-                image_urls = [item["url"] for item in image_uploads]
-                video_urls = [item["url"] for item in video_uploads]
-                cover_image_url = next(
+                if (await product_import_task_controller.get(id=task_id)).status == ProductImportTaskStatus.CANCELED:
+                    canceled = True
+                    processed_count += 1
+                    await product_import_task_item_controller.mark_skipped(item.id, message="任务已由用户取消")
+                    break
+                cover_image_key = next(
                     (
-                        item["url"]
-                        for item in image_uploads
-                        if os.path.abspath(item["path"]) == os.path.abspath(material_set.cover_image)
+                        uploaded["object_key"]
+                        for uploaded in image_uploads
+                        if os.path.abspath(uploaded["path"]) == os.path.abspath(material_set.cover_image)
                     ),
                     None,
                 )
-                if cover_image_url is None and image_urls:
-                    cover_image_url = image_urls[0]
+                image_keys = sort_media_keys(
+                    [
+                        uploaded["object_key"]
+                        for uploaded in image_uploads
+                        if os.path.abspath(uploaded["path"]) != os.path.abspath(material_set.cover_image)
+                    ]
+                )
+                video_keys = [item["object_key"] for item in video_uploads]
+                if cover_image_key is None and image_uploads:
+                    cover_image_key = image_uploads[0]["object_key"]
                 payload = {
                     "category_id": row.category_id,
                     "brand_id": row.brand_id,
                     "name": row.name,
                     "desc": row.desc,
                     "detail_description": row.detail_description,
-                    "cover_image_url": cover_image_url,
-                    "image_urls": image_urls,
-                    "video_urls": video_urls,
+                    "cover_image_key": cover_image_key,
+                    "image_keys": image_keys,
+                    "video_keys": video_keys,
                     "status": row.status,
                     "order": row.order,
                 }

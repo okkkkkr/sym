@@ -140,6 +140,18 @@ export default {
   createContact: (data = {}) => request.post('/contact/create', data),
   updateContact: (data = {}) => request.post('/contact/update', data),
   deleteContact: (params = {}) => request.delete('/contact/delete', { params }),
+  getContactQrUploadToken: (data = {}) => request.post('/contact/qr/upload-token', data),
+  // platforms
+  getPlatformList: (params = {}) => request.get('/platform/list', { params }),
+  getPlatformById: (params = {}) => request.get('/platform/get', { params }),
+  createPlatform: (data = {}) => request.post('/platform/create', data),
+  updatePlatform: (data = {}) => request.post('/platform/update', data),
+  deletePlatform: (params = {}) => request.delete('/platform/delete', { params }),
+  // site config
+  getSiteConfig: () => request.get('/site-config/get'),
+  getSiteConfigLogoUploadToken: (data = {}) => request.post('/site-config/logo/upload-token', data),
+  deleteSiteConfigLogo: (data = {}) => request.post('/site-config/logo/delete', data),
+  updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getActiveBanners: (params = {}) => request.get('/base/banners', { params, noNeedToken: true }),
   getActiveContacts: (params = {}) => request.get('/base/contacts', { params, noNeedToken: true }),
   // products
@@ -153,14 +165,17 @@ export default {
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),
-  getProductImportUploadStatus: (params = {}) => request.get('/product/import/upload-status', { params }),
+  getProductImportUploadStatus: (params = {}) =>
+    request.get('/product/import/upload-status', { params }),
   completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
+  getActiveProductImportTask: () => request.get('/product/import/active-task'),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
   getProductImportTask: (params = {}) => request.get('/product/import/task', { params }),
   getProductImportTaskItems: (params = {}) => request.get('/product/import/task/items', { params }),
   cancelProductImportTask: (data = {}) => request.post('/product/import/task/cancel', data),
   retryProductImportTask: (data = {}) => request.post('/product/import/task/retry', data),
-  retryFailedProductImportTask: (data = {}) => request.post('/product/import/task/retry-failed', data),
+  retryFailedProductImportTask: (data = {}) =>
+    request.post('/product/import/task/retry-failed', data),
   downloadProductImportTemplate: () =>
     downloadScopedGetFile('/product/import/template', 'product-import-template.xlsx'),
   downloadProductImportExample: () =>
@@ -180,4 +195,6 @@ export default {
   getProductClickStatsList: (params = {}) => request.get('/stats/product-click/list', { params }),
   getBrandSearchStatsList: (params = {}) => request.get('/stats/brand-search/list', { params }),
   getBannerClickStatsList: (params = {}) => request.get('/stats/banner-click/list', { params }),
+  getChannelVisitStatsList: (params = {}) => request.get('/stats/channel-visit/list', { params }),
+  getContactClickStatsList: (params = {}) => request.get('/stats/contact-click/list', { params }),
 }
