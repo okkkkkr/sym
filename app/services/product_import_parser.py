@@ -181,6 +181,9 @@ class ProductImportParserService:
             row.errors.append(f"以下标签不存在: {', '.join(missing_tags)}")
         row.tag_ids = list(dict.fromkeys(resolved_tag_ids))
 
+        if row.product_code_custom and not row.product_code_custom.isdigit():
+            row.errors.append("好物识别码仅支持数字")
+
         normalized_name = self._normalize_name(row.name)
         if normalized_name and normalized_name in existing_products:
             row.duplicate_hint = True

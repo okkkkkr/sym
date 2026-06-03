@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProductTagOut(BaseModel):
@@ -23,6 +23,16 @@ class BaseProduct(BaseModel):
     click_count: int = Field(0, description="点击量")
     status: bool = Field(True, description="是否上架")
     order: int = Field(0, description="排序")
+
+    @field_validator("product_code_custom")
+    @classmethod
+    def validate_product_code_custom(cls, value: Optional[str]) -> Optional[str]:
+        normalized_value = str(value or "").strip()
+        if not normalized_value:
+            return None
+        if not normalized_value.isdigit():
+            raise ValueError("好物识别码仅支持数字")
+        return normalized_value
 
 
 class ProductCreate(BaseProduct): ...

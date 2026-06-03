@@ -61,8 +61,11 @@ const modalAction = ref('add')
 const modalFormRef = ref(null)
 const statusUpdatingIds = ref([])
 const vPermission = resolveDirective('permission')
-const actionCellStyle = 'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
-const hasActiveFilters = computed(() => Object.values(queryItems.value).some(isEffectiveFilterValue))
+const actionCellStyle =
+  'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;'
+const hasActiveFilters = computed(() =>
+  Object.values(queryItems.value).some(isEffectiveFilterValue)
+)
 
 function isEffectiveFilterValue(value) {
   if (Array.isArray(value)) return value.length > 0
@@ -105,6 +108,14 @@ const rules = {
   name: {
     required: true,
     message: '请输入好物名称',
+    trigger: ['input', 'blur'],
+  },
+  product_code_custom: {
+    validator: (_, value) => {
+      const productCode = String(value || '').trim()
+      if (!productCode || /^\d+$/.test(productCode)) return true
+      return new Error('好物识别码仅支持数字')
+    },
     trigger: ['input', 'blur'],
   },
   cover_file_list: {
@@ -205,17 +216,22 @@ function decorateUploadFile(file, prefix = 'file') {
 
 function createUploadFile(url, prefix = 'file', rawUrl = url) {
   if (!url) return null
-  return decorateUploadFile({
-    id: nextUploadFileId(prefix),
-    name: getFileNameFromUrl(url, prefix),
-    status: 'finished',
-    url,
-    rawUrl,
-  }, prefix)
+  return decorateUploadFile(
+    {
+      id: nextUploadFileId(prefix),
+      name: getFileNameFromUrl(url, prefix),
+      status: 'finished',
+      url,
+      rawUrl,
+    },
+    prefix
+  )
 }
 
 function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
-  return urls.map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url)).filter(Boolean)
+  return urls
+    .map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url))
+    .filter(Boolean)
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
@@ -715,13 +731,27 @@ function goToProductImport() {
 <template>
   <CommonPage show-footer title="好物列表">
     <template #action>
-      <NButton v-permission="'get/api/v1/product/import/tasks'" type="default" @click="goToProductImport">
+      <NButton
+        v-permission="'get/api/v1/product/import/tasks'"
+        type="default"
+        @click="goToProductImport"
+      >
         <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />去批量导入
       </NButton>
-      <NButton v-permission="'post/api/v1/product/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
+      <NButton
+        v-permission="'post/api/v1/product/export'"
+        type="default"
+        :loading="exportLoading"
+        @click="openBatchExportModal"
+      >
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
       </NButton>
-      <NButton v-permission="'delete/api/v1/product/delete'" type="error" secondary @click="openBatchDeleteModal">
+      <NButton
+        v-permission="'delete/api/v1/product/delete'"
+        type="error"
+        secondary
+        @click="openBatchDeleteModal"
+      >
         <TheIcon icon="material-symbols:delete-outline" :size="18" class="mr-5" />批量删除
       </NButton>
       <NButton v-permission="'post/api/v1/product/create'" type="primary" @click="openAddModal">
@@ -799,7 +829,7 @@ function goToProductImport() {
               <NInput
                 v-model:value="modalForm.product_code_custom"
                 clearable
-                placeholder="请输入自定义数字，例如 666"
+                placeholder="请输入数字，例如 666"
               />
             </NFormItem>
             <NFormItem label="所属分类" path="category_id">
@@ -811,20 +841,29 @@ function goToProductImport() {
               />
             </NFormItem>
             <NFormItem label="所属品牌" path="brand_id">
-              <NSelect v-model:value="modalForm.brand_id" :options="modalBrandOptions" placeholder="请选择所属品牌" />
+              <NSelect
+                v-model:value="modalForm.brand_id"
+                :options="modalBrandOptions"
+                placeholder="请选择所属品牌"
+              />
             </NFormItem>
             <NFormItem label="关联标签" path="tag_ids">
               <NSelect
                 v-model:value="modalForm.tag_ids"
-                multiple
-                filterable
                 clearable
+                filterable
+                multiple
                 :options="tagOptions"
                 placeholder="请选择标签"
               />
             </NFormItem>
             <NFormItem label="好物简介" path="desc">
-              <NInput v-model:value="modalForm.desc" type="textarea" :rows="3" placeholder="请输入好物简介" />
+              <NInput
+                v-model:value="modalForm.desc"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入好物简介"
+              />
             </NFormItem>
             <NFormItem label="封面图" path="cover_file_list">
               <NUpload

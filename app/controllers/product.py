@@ -34,9 +34,11 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
         return "".join(secrets.choice(alphabet) for _ in range(length))
 
     async def build_product_code(self, custom_value: str | None, current_code: str | None = None) -> str | None:
-        normalized_custom = "".join(ch for ch in str(custom_value or "").strip() if ch.isdigit())
+        normalized_custom = str(custom_value or "").strip()
         if not normalized_custom:
             return current_code
+        if not normalized_custom.isdigit():
+            raise HTTPException(status_code=400, detail="好物识别码仅支持数字")
 
         year = datetime.now().year
         prefix = f"{year}{normalized_custom}"
