@@ -6,6 +6,7 @@ from tortoise.transactions import in_transaction
 
 from app.models.admin import HomeLayout, HomeLayoutItem, HomeLayoutModule
 from app.schemas.home_layouts import HomeLayoutCommonConfigIn, HomeLayoutDraftSaveIn, LayoutAction
+from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
 from app.services.product_media_upload import product_media_upload_service
 
 
@@ -132,6 +133,14 @@ class HomeLayoutController:
 
     async def save_draft(self, payload: HomeLayoutDraftSaveIn) -> dict:
         draft = await self.get_draft(payload.page_code)
+        previous_draft_keys = normalize_media_keys(await self._list_layout_image_keys(draft.id))
+        published = await self.get_current(payload.page_code)
+        published_keys = normalize_media_keys(await self._list_layout_image_keys(published.id)) if published else []
+        current_draft_keys = normalize_media_keys(
+            item.image
+            for module in payload.modules
+            for item in module.items
+        )
         async with in_transaction():
             await HomeLayoutModule.filter(layout_id=draft.id).delete()
             draft.common_config = payload.common_config.model_dump()
@@ -156,6 +165,9 @@ class HomeLayoutController:
                         action=item.action.model_dump(),
                     )
             await draft.save(update_fields=["common_config", "updated_at"])
+        await delete_media_keys(
+            [item for item in diff_removed_media_keys(previous_draft_keys, current_draft_keys) if item not in set(published_keys)]
+        )
         return await self.get_draft_data(payload.page_code)
 
     async def publish(self, page_code: str = "home") -> dict:
@@ -214,6 +226,11 @@ class HomeLayoutController:
             }
             for module in modules
         ]
+
+    async def _list_layout_image_keys(self, layout_id: int) -> list[str]:
+        if not layout_id:
+            return []
+        return list(await HomeLayoutItem.filter(module__layout_id=layout_id).values_list("image", flat=True))
 
     async def _clone_modules(self, source_layout_id: int, target_layout_id: int) -> None:
         modules = await self._serialize_modules(source_layout_id)

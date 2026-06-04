@@ -1,5 +1,14 @@
 <script setup>
-import { computed, h, onMounted, ref, resolveDirective, withDirectives } from 'vue'
+import {
+  computed,
+  h,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  resolveDirective,
+  watch,
+  withDirectives,
+} from 'vue'
 import {
   NButton,
   NForm,
@@ -26,6 +35,14 @@ import BatchExportModal from '@/components/table/BatchExportModal.vue'
 import CrudModal from '@/components/table/CrudModal.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import { formatDate } from '@/utils'
+import {
+  PERSISTED_RESOURCE_STATE,
+  TRANSIENT_RESOURCE_STATE,
+  collectTransientResourceKeys,
+  findRemovedUploadFiles,
+  markUploadFilesPersisted,
+  normalizeManagedUploadFileList,
+} from '@/utils/media/resource'
 
 defineOptions({ name: '好物管理' })
 
@@ -254,6 +271,7 @@ function createUploadFile(url, prefix = 'file', rawUrl = url) {
       status: 'finished',
       url,
       rawUrl,
+      resourceState: PERSISTED_RESOURCE_STATE,
     },
     prefix
   )
@@ -266,14 +284,26 @@ function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
-  const normalizedList = fileList
-    .filter((item) => item?.status !== 'removed')
-    .map((item) => {
-      if (item.url || item.thumbnailUrl) return decorateUploadFile(item, prefix)
-      const objectUrl = item.file ? URL.createObjectURL(item.file) : ''
-      return objectUrl ? decorateUploadFile({ ...item, url: objectUrl }, prefix) : item
-    })
+  const normalizedList = normalizeManagedUploadFileList(
+    fileList
+      .filter((item) => item?.status !== 'removed')
+      .map((item) => {
+        if (item.url || item.thumbnailUrl) return decorateUploadFile(item, prefix)
+        const objectUrl = item.file ? URL.createObjectURL(item.file) : ''
+        return objectUrl ? decorateUploadFile({ ...item, url: objectUrl }, prefix) : item
+      })
+  )
   return prefix === 'image' ? sortUploadFileList(normalizedList) : normalizedList
+}
+
+async function deleteMediaKeys(keys = []) {
+  const normalizedKeys = [...new Set(keys.map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!normalizedKeys.length) return
+  try {
+    await api.deleteMediaFiles({ keys: normalizedKeys })
+  } catch (error) {
+    console.error('删除未保存媒体失败', error)
+  }
 }
 
 function buildUploadKeys(fileList = []) {
@@ -346,6 +376,7 @@ function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
       })
 
       file.rawUrl = credential.data.object_key
+      file.resourceState = TRANSIENT_RESOURCE_STATE
       applyUploadedFile(fieldName, prefix, file, credential.data.preview_url || credential.data.url)
       onFinish()
     } catch (error) {
@@ -597,15 +628,21 @@ function openEditModal(row) {
 }
 
 function handleCoverFileListChange(fileList) {
+  const removedFiles = findRemovedUploadFiles(modalForm.value.cover_file_list, fileList)
   modalForm.value.cover_file_list = normalizeUploadFileList(fileList, 'cover')
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 function handleImageFileListChange(fileList) {
+  const removedFiles = findRemovedUploadFiles(modalForm.value.image_file_list, fileList)
   modalForm.value.image_file_list = normalizeUploadFileList(fileList, 'image')
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 function handleVideoFileListChange(fileList) {
+  const removedFiles = findRemovedUploadFiles(modalForm.value.video_file_list, fileList)
   modalForm.value.video_file_list = normalizeUploadFileList(fileList, 'video')
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 function handleCategoryFilterChange() {
@@ -667,6 +704,9 @@ async function handleSave() {
         await api.createProduct(payload)
         $message.success('好物新增成功')
       }
+      modalForm.value.cover_file_list = markUploadFilesPersisted(modalForm.value.cover_file_list)
+      modalForm.value.image_file_list = markUploadFilesPersisted(modalForm.value.image_file_list)
+      modalForm.value.video_file_list = markUploadFilesPersisted(modalForm.value.video_file_list)
       modalVisible.value = false
       modalLoading.value = false
       $table.value?.handleSearch()
@@ -764,6 +804,23 @@ async function toggleStatus(row, nextValue) {
 function goToProductImport() {
   router.push('/batch/product-import')
 }
+
+watch(modalVisible, (visible, wasVisible) => {
+  if (visible || !wasVisible) return
+  deleteMediaKeys([
+    ...collectTransientResourceKeys(modalForm.value.cover_file_list),
+    ...collectTransientResourceKeys(modalForm.value.image_file_list),
+    ...collectTransientResourceKeys(modalForm.value.video_file_list),
+  ])
+})
+
+onBeforeUnmount(() => {
+  deleteMediaKeys([
+    ...collectTransientResourceKeys(modalForm.value.cover_file_list),
+    ...collectTransientResourceKeys(modalForm.value.image_file_list),
+    ...collectTransientResourceKeys(modalForm.value.video_file_list),
+  ])
+})
 </script>
 
 <template>

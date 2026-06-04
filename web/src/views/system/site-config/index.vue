@@ -1,9 +1,17 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NButton, NForm, NFormItem, NIcon, NInput, NSpin, NUpload } from 'naive-ui'
 
 import CommonPage from '@/components/page/CommonPage.vue'
 import api from '@/api'
+import {
+  PERSISTED_RESOURCE_STATE,
+  TRANSIENT_RESOURCE_STATE,
+  collectTransientResourceKeys,
+  findRemovedUploadFiles,
+  markUploadFilesPersisted,
+  normalizeManagedUploadFileList,
+} from '@/utils/media/resource'
 
 defineOptions({ name: '站点配置' })
 
@@ -84,26 +92,29 @@ function createLogoUploadFile(url, rawUrl = url) {
     url,
     thumbnailUrl: url,
     rawUrl,
+    resourceState: PERSISTED_RESOURCE_STATE,
   }
 }
 
 function normalizeLogoFileList(fileList = []) {
-  return fileList
-    .map((file) => {
-      if (!file) return null
-      if (file.url || file.thumbnailUrl) {
-        return {
-          ...file,
-          url: file.url || file.thumbnailUrl,
-          thumbnailUrl: file.thumbnailUrl || file.url,
-          rawUrl: file.rawUrl || file.url || file.thumbnailUrl || '',
+  return normalizeManagedUploadFileList(
+    fileList
+      .map((file) => {
+        if (!file) return null
+        if (file.url || file.thumbnailUrl) {
+          return {
+            ...file,
+            url: file.url || file.thumbnailUrl,
+            thumbnailUrl: file.thumbnailUrl || file.url,
+            rawUrl: file.rawUrl || file.url || file.thumbnailUrl || '',
+          }
         }
-      }
-      if (!file.file) return file
-      const objectUrl = URL.createObjectURL(file.file)
-      return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
-    })
-    .filter(Boolean)
+        if (!file.file) return file
+        const objectUrl = URL.createObjectURL(file.file)
+        return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
+      })
+      .filter(Boolean)
+  )
 }
 
 function applySiteConfig(data = {}) {
@@ -139,16 +150,22 @@ function syncLogoValue(fileList = []) {
   form.value.logo_key = logoFileList.value[0]?.rawUrl || ''
 }
 
+async function deleteMediaKeys(keys = []) {
+  const normalizedKeys = [...new Set(keys.map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!normalizedKeys.length) return
+  try {
+    await api.deleteMediaFiles({ keys: normalizedKeys })
+  } catch (error) {
+    console.error('删除未使用的资源失败', error)
+  }
+}
+
 async function deleteUnusedLogo(logoKey) {
   const normalizedLogoKey = String(logoKey || '').trim()
   if (!normalizedLogoKey || normalizedLogoKey === savedLogoUrl.value) {
     return
   }
-  try {
-    await api.deleteSiteConfigLogo({ logo_key: normalizedLogoKey })
-  } catch (error) {
-    console.error('删除未使用的 Logo 失败', error)
-  }
+  await deleteMediaKeys([normalizedLogoKey])
 }
 
 async function loadSiteConfig() {
@@ -201,6 +218,7 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
     file.url = credential.data.preview_url || credential.data.url
     file.thumbnailUrl = file.url
     file.rawUrl = credential.data.object_key
+    file.resourceState = TRANSIENT_RESOURCE_STATE
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)
     }
@@ -221,11 +239,9 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
 }
 
 function handleLogoFileListChange(fileList) {
-  const removedLogoKey = !fileList.length ? form.value.logo_key.trim() : ''
+  const removedFiles = findRemovedUploadFiles(logoFileList.value, fileList)
   syncLogoValue(fileList)
-  if (removedLogoKey) {
-    deleteUnusedLogo(removedLogoKey)
-  }
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 async function handleSave() {
@@ -234,6 +250,7 @@ async function handleSave() {
   try {
     const response = await api.updateSiteConfig(buildPayload())
     applySiteConfig(response.data || {})
+    logoFileList.value = markUploadFilesPersisted(logoFileList.value)
     $message.success('站点配置已保存')
   } finally {
     saving.value = false
@@ -242,6 +259,10 @@ async function handleSave() {
 
 onMounted(() => {
   loadSiteConfig()
+})
+
+onBeforeUnmount(() => {
+  deleteMediaKeys(collectTransientResourceKeys(logoFileList.value))
 })
 </script>
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -20,6 +20,13 @@ import {
 import CommonPage from '@/components/page/CommonPage.vue'
 import TheIcon from '@/components/icon/TheIcon.vue'
 import api from '@/api'
+import {
+  PERSISTED_RESOURCE_STATE,
+  TRANSIENT_RESOURCE_STATE,
+  collectTransientResourceKeys,
+  findRemovedUploadFiles,
+  normalizeManagedUploadFileList,
+} from '@/utils/media/resource'
 
 defineOptions({ name: '首页装修' })
 
@@ -146,26 +153,39 @@ function createUploadFile(url, rawUrl = url) {
     url,
     thumbnailUrl: url,
     rawUrl,
+    resourceState: PERSISTED_RESOURCE_STATE,
   }
 }
 
 function normalizeUploadFileList(fileList = []) {
-  return fileList
-    .map((file) => {
-      if (!file) return null
-      if (file.url || file.thumbnailUrl) {
-        return {
-          ...file,
-          url: file.url || file.thumbnailUrl,
-          thumbnailUrl: file.thumbnailUrl || file.url,
-          rawUrl: file.rawUrl || file.url || file.thumbnailUrl || '',
+  return normalizeManagedUploadFileList(
+    fileList
+      .map((file) => {
+        if (!file) return null
+        if (file.url || file.thumbnailUrl) {
+          return {
+            ...file,
+            url: file.url || file.thumbnailUrl,
+            thumbnailUrl: file.thumbnailUrl || file.url,
+            rawUrl: file.rawUrl || file.url || file.thumbnailUrl || '',
+          }
         }
-      }
-      if (!file.file) return file
-      const objectUrl = URL.createObjectURL(file.file)
-      return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
-    })
-    .filter(Boolean)
+        if (!file.file) return file
+        const objectUrl = URL.createObjectURL(file.file)
+        return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
+      })
+      .filter(Boolean)
+  )
+}
+
+async function deleteMediaKeys(keys = []) {
+  const normalizedKeys = [...new Set(keys.map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!normalizedKeys.length) return
+  try {
+    await api.deleteMediaFiles({ keys: normalizedKeys })
+  } catch (error) {
+    console.error('删除未保存首页图片失败', error)
+  }
 }
 
 function normalizeLayout(data = {}) {
@@ -250,14 +270,20 @@ function reindexItems(module) {
 }
 
 const selectedModule = computed(() => layout.value.modules[selectedModuleIndex.value] || null)
-const hasPublishedVersion = computed(() => currentPublished.value.version > 0)
-const hasUnsavedChanges = computed(() => JSON.stringify(buildComparablePayload()) !== draftPayload.value)
+const hasUnsavedChanges = computed(
+  () => JSON.stringify(buildComparablePayload()) !== draftPayload.value
+)
 const hasDraftToPublish = computed(() => hasSavedDraftToPublish.value)
 const saveDisabled = computed(
   () => loading.value || saving.value || publishing.value || !hasUnsavedChanges.value
 )
 const publishDisabled = computed(
-  () => loading.value || saving.value || publishing.value || hasUnsavedChanges.value || !hasDraftToPublish.value
+  () =>
+    loading.value ||
+    saving.value ||
+    publishing.value ||
+    hasUnsavedChanges.value ||
+    !hasDraftToPublish.value
 )
 
 async function loadPage() {
@@ -380,6 +406,11 @@ function handleAddModule() {
 }
 
 function handleRemoveModule(index) {
+  deleteMediaKeys(
+    layout.value.modules[index]?.items.flatMap((item) =>
+      collectTransientResourceKeys(item.image_file_list)
+    ) || []
+  )
   layout.value.modules.splice(index, 1)
   reindexModules()
   if (!layout.value.modules.length) {
@@ -402,9 +433,16 @@ function moveModule(index, direction) {
 
 function handleModuleTypeChange(value) {
   if (!selectedModule.value) return
+  const previousTransientKeys = selectedModule.value.items.flatMap((item) =>
+    collectTransientResourceKeys(item.image_file_list)
+  )
   selectedModule.value.type = value
   selectedModule.value.config = createConfig(value)
   ensureModuleStructure(selectedModule.value)
+  const nextTransientKeys = new Set(
+    selectedModule.value.items.flatMap((item) => collectTransientResourceKeys(item.image_file_list))
+  )
+  deleteMediaKeys(previousTransientKeys.filter((item) => !nextTransientKeys.has(item)))
   syncItemExpandedNames()
 }
 
@@ -417,6 +455,9 @@ function handleAddItem() {
 
 function handleRemoveItem(index) {
   if (!selectedModule.value || selectedModule.value.items.length === 1) return
+  deleteMediaKeys(
+    collectTransientResourceKeys(selectedModule.value.items[index]?.image_file_list || [])
+  )
   selectedModule.value.items.splice(index, 1)
   reindexItems(selectedModule.value)
   syncItemExpandedNames()
@@ -479,6 +520,7 @@ async function handleItemImageUpload({ file, onError, onFinish, onProgress }, it
     file.url = credential.data.preview_url || credential.data.url
     file.thumbnailUrl = file.url
     file.rawUrl = credential.data.object_key
+    file.resourceState = TRANSIENT_RESOURCE_STATE
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)
     }
@@ -494,7 +536,9 @@ async function handleItemImageUpload({ file, onError, onFinish, onProgress }, it
 }
 
 function handleItemImageFileListChange(item, fileList) {
+  const removedFiles = findRemovedUploadFiles(item.image_file_list, fileList)
   syncItemImageValue(item, fileList)
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 async function handleSave() {
@@ -518,7 +562,8 @@ async function handlePublish() {
   }
   publishing.value = true
   try {
-    await api.saveHomeLayoutDraft(buildPayload())
+    const savedDraftResponse = await api.saveHomeLayoutDraft(buildPayload())
+    layout.value = normalizeLayout(savedDraftResponse.data)
     const response = await api.publishHomeLayout({ page_code: 'home' })
     currentPublished.value = {
       version: response.data?.version || 0,
@@ -537,7 +582,9 @@ function formatPublishedMeta() {
   if (!currentPublished.value.version) {
     return '当前还没有已发布版本'
   }
-  return `当前发布版本 v${currentPublished.value.version}${currentPublished.value.published_at ? `，发布时间 ${currentPublished.value.published_at}` : ''}`
+  return `当前发布版本 v${currentPublished.value.version}${
+    currentPublished.value.published_at ? `，发布时间 ${currentPublished.value.published_at}` : ''
+  }`
 }
 
 watch(selectedModuleIndex, () => {
@@ -546,6 +593,14 @@ watch(selectedModuleIndex, () => {
 
 onMounted(() => {
   loadPage()
+})
+
+onBeforeUnmount(() => {
+  deleteMediaKeys(
+    layout.value.modules.flatMap((module) =>
+      module.items.flatMap((item) => collectTransientResourceKeys(item.image_file_list))
+    )
+  )
 })
 </script>
 
@@ -556,7 +611,12 @@ onMounted(() => {
         <div class="home-layout-admin__save-group">
           <NButton :loading="saving" :disabled="saveDisabled" @click="handleSave">保存草稿</NButton>
         </div>
-        <NButton type="primary" :loading="publishing" :disabled="publishDisabled" @click="handlePublish">
+        <NButton
+          type="primary"
+          :loading="publishing"
+          :disabled="publishDisabled"
+          @click="handlePublish"
+        >
           发布
           <span v-if="hasDraftToPublish && !hasUnsavedChanges && layout.updated_at">
             （待发布草稿：{{ layout.updated_at }}）
@@ -568,7 +628,10 @@ onMounted(() => {
     <div class="home-layout-admin">
       <aside class="home-layout-admin__sidebar">
         <NCard size="small" class="home-layout-admin__sidebar-card">
-          <NCollapse v-model:expanded-names="sidebarExpandedNames" class="home-layout-admin__collapse">
+          <NCollapse
+            v-model:expanded-names="sidebarExpandedNames"
+            class="home-layout-admin__collapse"
+          >
             <NCollapseItem title="公共配置" name="common-config">
               <div class="home-layout-admin__common-list">
                 <div class="home-layout-admin__common-row">
@@ -611,7 +674,12 @@ onMounted(() => {
                     <div class="home-layout-admin__module-buttons">
                       <NTooltip trigger="hover">
                         <template #trigger>
-                          <NButton quaternary circle size="small" @click.stop="moveModule(index, -1)">
+                          <NButton
+                            quaternary
+                            circle
+                            size="small"
+                            @click.stop="moveModule(index, -1)"
+                          >
                             <TheIcon icon="tabler:arrow-up" :size="16" />
                           </NButton>
                         </template>
@@ -619,13 +687,24 @@ onMounted(() => {
                       </NTooltip>
                       <NTooltip trigger="hover">
                         <template #trigger>
-                          <NButton quaternary circle size="small" @click.stop="moveModule(index, 1)">
+                          <NButton
+                            quaternary
+                            circle
+                            size="small"
+                            @click.stop="moveModule(index, 1)"
+                          >
                             <TheIcon icon="tabler:arrow-down" :size="16" />
                           </NButton>
                         </template>
                         下移
                       </NTooltip>
-                      <NButton quaternary circle size="small" type="error" @click.stop="handleRemoveModule(index)">
+                      <NButton
+                        quaternary
+                        circle
+                        size="small"
+                        type="error"
+                        @click.stop="handleRemoveModule(index)"
+                      >
                         <TheIcon icon="material-symbols:delete-outline" :size="17" />
                       </NButton>
                     </div>
@@ -663,7 +742,10 @@ onMounted(() => {
                 <NInput v-model:value="selectedModule.action.text" placeholder="如 Shop range" />
               </NFormItem>
               <NFormItem label="跳转地址">
-                <NInput v-model:value="selectedModule.action.link" placeholder="/collections/best-sellers" />
+                <NInput
+                  v-model:value="selectedModule.action.link"
+                  placeholder="/collections/best-sellers"
+                />
               </NFormItem>
               <NFormItem label="打开方式">
                 <NSelect
@@ -677,7 +759,10 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="Object.keys(selectedModule.config).length" class="home-layout-admin__action-card">
+          <div
+            v-if="Object.keys(selectedModule.config).length"
+            class="home-layout-admin__action-card"
+          >
             <h3>模块配置</h3>
             <div class="home-layout-admin__grid">
               <template v-if="selectedModule.type === 'single_image'">
@@ -703,14 +788,14 @@ onMounted(() => {
           <div class="home-layout-admin__action-card">
             <div class="home-layout-admin__section-header">
               <h3>内容项</h3>
-                <NButton
-                  v-if="!fixedItemCounts[selectedModule.type]"
-                  type="primary"
-                  secondary
-                  @click="handleAddItem"
-                >
-                  新增内容项
-                </NButton>
+              <NButton
+                v-if="!fixedItemCounts[selectedModule.type]"
+                type="primary"
+                secondary
+                @click="handleAddItem"
+              >
+                新增内容项
+              </NButton>
             </div>
 
             <div class="home-layout-admin__items">
@@ -731,7 +816,12 @@ onMounted(() => {
                       <div class="home-layout-admin__module-buttons">
                         <NTooltip trigger="hover">
                           <template #trigger>
-                            <NButton quaternary circle size="small" @click.stop="moveItem(index, -1)">
+                            <NButton
+                              quaternary
+                              circle
+                              size="small"
+                              @click.stop="moveItem(index, -1)"
+                            >
                               <TheIcon icon="tabler:arrow-up" :size="16" />
                             </NButton>
                           </template>
@@ -739,7 +829,12 @@ onMounted(() => {
                         </NTooltip>
                         <NTooltip trigger="hover">
                           <template #trigger>
-                            <NButton quaternary circle size="small" @click.stop="moveItem(index, 1)">
+                            <NButton
+                              quaternary
+                              circle
+                              size="small"
+                              @click.stop="moveItem(index, 1)"
+                            >
                               <TheIcon icon="tabler:arrow-down" :size="16" />
                             </NButton>
                           </template>
@@ -767,7 +862,9 @@ onMounted(() => {
                         :custom-request="(options) => handleItemImageUpload(options, item)"
                         list-type="image-card"
                         :max="1"
-                        @update:file-list="(fileList) => handleItemImageFileListChange(item, fileList)"
+                        @update:file-list="
+                          (fileList) => handleItemImageFileListChange(item, fileList)
+                        "
                       >
                         <NIcon v-if="item.image_file_list.length < 1" size="40">
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">

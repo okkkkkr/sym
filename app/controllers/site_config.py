@@ -1,8 +1,8 @@
 from app.core.crud import CRUDBase
 from app.models.admin import SiteConfig
 from app.schemas.site_configs import SiteConfigUpdate
+from app.services.media_cleanup import delete_media_keys
 from app.services.product_media_upload import product_media_upload_service
-from app.services.storage import storage_service
 
 
 def serialize_site_config(site_config_obj: SiteConfig | None, include_storage: bool = False, include_key: bool = False) -> dict:
@@ -56,7 +56,7 @@ class SiteConfigController(CRUDBase[SiteConfig, SiteConfigUpdate, SiteConfigUpda
         normalized_logo_key = str(logo_key or "").strip()
         if not normalized_logo_key or normalized_logo_key == str(exclude_logo_key or "").strip():
             return
-        await storage_service.delete_file(normalized_logo_key)
+        await delete_media_keys([normalized_logo_key])
 
 
 site_config_controller = SiteConfigController()

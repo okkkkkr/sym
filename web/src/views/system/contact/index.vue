@@ -1,5 +1,14 @@
 <script setup>
-import { computed, h, onMounted, ref, resolveDirective, withDirectives } from 'vue'
+import {
+  computed,
+  h,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  resolveDirective,
+  watch,
+  withDirectives,
+} from 'vue'
 import {
   NButton,
   NForm,
@@ -24,6 +33,14 @@ import TheIcon from '@/components/icon/TheIcon.vue'
 import { formatDate } from '@/utils'
 import { useCRUD } from '@/composables'
 import api from '@/api'
+import {
+  PERSISTED_RESOURCE_STATE,
+  TRANSIENT_RESOURCE_STATE,
+  collectTransientResourceKeys,
+  findRemovedUploadFiles,
+  markUploadFilesPersisted,
+  normalizeManagedUploadFileList,
+} from '@/utils/media/resource'
 
 defineOptions({ name: '联系方式管理' })
 
@@ -131,26 +148,39 @@ function createQrUploadFile(url, rawUrl = url) {
     url,
     thumbnailUrl: url,
     rawUrl,
+    resourceState: PERSISTED_RESOURCE_STATE,
   }
 }
 
 function normalizeQrFileList(fileList = []) {
-  return fileList
-    .map((file) => {
-      if (!file) return null
-      if (file.url || file.thumbnailUrl) {
-        return {
-          ...file,
-          url: file.url || file.thumbnailUrl,
-          thumbnailUrl: file.thumbnailUrl || file.url,
-          rawUrl: file.rawUrl || '',
+  return normalizeManagedUploadFileList(
+    fileList
+      .map((file) => {
+        if (!file) return null
+        if (file.url || file.thumbnailUrl) {
+          return {
+            ...file,
+            url: file.url || file.thumbnailUrl,
+            thumbnailUrl: file.thumbnailUrl || file.url,
+            rawUrl: file.rawUrl || '',
+          }
         }
-      }
-      if (!file.file) return file
-      const objectUrl = URL.createObjectURL(file.file)
-      return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
-    })
-    .filter(Boolean)
+        if (!file.file) return file
+        const objectUrl = URL.createObjectURL(file.file)
+        return { ...file, url: objectUrl, thumbnailUrl: objectUrl, rawUrl: file.rawUrl || '' }
+      })
+      .filter(Boolean)
+  )
+}
+
+async function deleteMediaKeys(keys = []) {
+  const normalizedKeys = [...new Set(keys.map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!normalizedKeys.length) return
+  try {
+    await api.deleteMediaFiles({ keys: normalizedKeys })
+  } catch (error) {
+    console.error('删除未保存二维码失败', error)
+  }
 }
 
 function syncQrValue(fileList = []) {
@@ -215,6 +245,7 @@ async function handleQrUpload({ file, onError, onFinish, onProgress }) {
     file.url = credential.data.preview_url || credential.data.url
     file.thumbnailUrl = file.url
     file.rawUrl = credential.data.object_key
+    file.resourceState = TRANSIENT_RESOURCE_STATE
     qrObjectKey.value = credential.data.object_key
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)
@@ -233,10 +264,12 @@ async function handleQrUpload({ file, onError, onFinish, onProgress }) {
 }
 
 function handleQrFileListChange(fileList) {
+  const removedFiles = findRemovedUploadFiles(qrFileList.value, fileList)
   if (!fileList.length) {
     qrObjectKey.value = ''
   }
   syncQrValue(fileList)
+  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 function handleSave() {
@@ -245,7 +278,9 @@ function handleSave() {
     return
   }
   modalForm.value.qr_image_url = qrObjectKey.value
-  saveContact()
+  saveContact(() => {
+    qrFileList.value = markUploadFilesPersisted(qrFileList.value)
+  })
 }
 
 const rules = {
@@ -263,6 +298,15 @@ const rules = {
 
 onMounted(() => {
   $table.value?.handleSearch()
+})
+
+watch(modalVisible, (visible, wasVisible) => {
+  if (visible || !wasVisible) return
+  deleteMediaKeys(collectTransientResourceKeys(qrFileList.value))
+})
+
+onBeforeUnmount(() => {
+  deleteMediaKeys(collectTransientResourceKeys(qrFileList.value))
 })
 
 const columns = computed(() => [

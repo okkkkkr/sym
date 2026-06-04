@@ -7,6 +7,7 @@ from app.controllers.category import category_controller
 from app.controllers.product import product_controller
 from app.core.dependency import DependAuth
 from app.models import User
+from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
 from app.services.product_media_upload import product_media_upload_service
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
@@ -188,6 +189,9 @@ async def update_product(product_in: ProductUpdate):
     await product_controller.ensure_relations(product_in.category_id, product_in.brand_id)
     tag_ids = await product_controller.ensure_tag_ids_exist(product_in.tag_ids)
     current_product = await product_controller.get(id=product_in.id)
+    previous_media_keys = normalize_media_keys(
+        [current_product.cover_image_key, *(current_product.image_keys or []), *(current_product.video_keys or [])]
+    )
     payload = product_in.model_dump(exclude={"id", "product_code_custom", "tag_ids"})
     payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
     payload["product_code"] = await product_controller.build_product_code(
@@ -195,13 +199,25 @@ async def update_product(product_in: ProductUpdate):
         current_code=current_product.product_code,
     )
     await product_controller.update_with_tags(id=product_in.id, obj_in=payload, tag_ids=tag_ids)
+    await delete_media_keys(
+        diff_removed_media_keys(
+            previous_media_keys,
+            [payload.get("cover_image_key"), *(payload.get("image_keys") or []), *(payload.get("video_keys") or [])],
+        )
+    )
     return Success(msg="Updated Successfully")
 
 
 @router.delete("/delete", summary="删除好物")
 async def delete_product(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_product_ids(payload)
+    media_keys = normalize_media_keys(
+        key
+        for product in await product_controller.model.filter(id__in=ids).values("cover_image_key", "image_keys", "video_keys")
+        for key in [product.get("cover_image_key"), *(product.get("image_keys") or []), *(product.get("video_keys") or [])]
+    )
     deleted_count = await product_controller.remove_many(ids=ids)
+    await delete_media_keys(media_keys)
     return Success(msg="Deleted Successfully", data={"deleted": deleted_count})
 
 
