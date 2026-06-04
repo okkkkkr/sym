@@ -120,6 +120,51 @@ class SiteConfig(BaseModel, TimestampMixin):
         table = "site_config"
 
 
+class HomeLayout(BaseModel, TimestampMixin):
+    page_code = fields.CharField(max_length=50, default="home", description="页面标识", index=True)
+    status = fields.CharField(max_length=20, default="draft", description="状态", index=True)
+    version = fields.IntField(default=0, description="版本号", index=True)
+    is_current = fields.BooleanField(default=False, description="是否当前生效版本", index=True)
+    common_config = fields.JSONField(
+        default=lambda: {
+            "show_banner": True,
+            "show_navigation": True,
+            "show_footer": True,
+        },
+        description="公共配置",
+    )
+    published_at = fields.DatetimeField(null=True, description="发布时间", index=True)
+
+    class Meta:
+        table = "home_layout"
+
+
+class HomeLayoutModule(BaseModel, TimestampMixin):
+    layout = fields.ForeignKeyField("models.HomeLayout", related_name="modules", on_delete=fields.CASCADE)
+    type = fields.CharField(max_length=50, description="模块类型", index=True)
+    sort = fields.IntField(default=0, description="模块排序", index=True)
+    is_enabled = fields.BooleanField(default=True, description="是否启用", index=True)
+    title = fields.CharField(max_length=255, default="", description="模块标题")
+    action = fields.JSONField(default=dict, description="模块操作配置")
+    config = fields.JSONField(default=dict, description="模块配置")
+
+    class Meta:
+        table = "home_layout_module"
+
+
+class HomeLayoutItem(BaseModel, TimestampMixin):
+    module = fields.ForeignKeyField("models.HomeLayoutModule", related_name="items", on_delete=fields.CASCADE)
+    sort = fields.IntField(default=0, description="内容项排序", index=True)
+    image = fields.CharField(max_length=500, default="", description="图片地址")
+    title = fields.CharField(max_length=255, default="", description="主文案")
+    description = fields.CharField(max_length=500, default="", description="辅助文案")
+    badge = fields.CharField(max_length=100, default="", description="角标文案")
+    action = fields.JSONField(default=dict, description="内容项操作配置")
+
+    class Meta:
+        table = "home_layout_item"
+
+
 class ChannelVisit(BaseModel):
     visitor_id = fields.CharField(max_length=64, description="访客标识", index=True)
     platform_name_snapshot = fields.CharField(max_length=100, description="渠道名称快照")

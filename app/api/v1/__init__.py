@@ -10,6 +10,7 @@ from .base import base_router
 from .categories import categories_router
 from .contacts import contacts_router
 from .depts import depts_router
+from .home_layouts import home_layouts_router
 from .menus import menus_router
 from .products import products_router
 from .platforms import platforms_router
@@ -29,6 +30,7 @@ v1_router.include_router(contacts_router, prefix="/contact", dependencies=[Depen
 v1_router.include_router(products_router, prefix="/product", dependencies=[DependPermission])
 v1_router.include_router(platforms_router, prefix="/platform", dependencies=[DependPermission])
 v1_router.include_router(site_configs_router, prefix="/site-config", dependencies=[DependPermission])
+v1_router.include_router(home_layouts_router, prefix="/home-layout", dependencies=[DependPermission])
 v1_router.include_router(users_router, prefix="/user", dependencies=[DependPermission])
 v1_router.include_router(roles_router, prefix="/role", dependencies=[DependPermission])
 v1_router.include_router(menus_router, prefix="/menu", dependencies=[DependPermission])
