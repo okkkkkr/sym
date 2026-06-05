@@ -28,20 +28,17 @@ const columns = computed(() => [
   {
     title: '渠道名称',
     key: 'platform_name',
-    align: 'center',
     ellipsis: { tooltip: true },
   },
   {
     title: '自定义名称',
     key: 'custom_name',
-    align: 'center',
     ellipsis: { tooltip: true },
   },
   {
-    title: '渠道访问数据',
+    title: '渠道访问量',
     key: 'click_count',
-    width: 130,
-    align: 'center',
+    width: 120,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -52,8 +49,7 @@ const columns = computed(() => [
   {
     title: '渠道状态',
     key: 'status',
-    width: 110,
-    align: 'center',
+    width: 100,
     render(row) {
       return h(
         NTag,

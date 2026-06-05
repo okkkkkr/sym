@@ -170,6 +170,9 @@ function extractActiveTask(error) {
 
 function applySystemTask(task) {
   systemTask.value = task || null
+  if (!activeTaskStatuses.includes(task?.status) && !selectedFile.value && !activeUploadSession.value) {
+    uploadStatusText.value = ''
+  }
   if (!activeUploadSession.value?.task_id) return
   if (task?.id === activeUploadSession.value.task_id) return
   clearCachedSession()

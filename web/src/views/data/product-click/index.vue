@@ -34,15 +34,14 @@ const columns = computed(() => [
   {
     title: '好物名称',
     key: 'name',
-    minWidth: 180,
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
+    fixed: 'left',
   },
   {
     title: '类目',
     key: 'category',
-    minWidth: 140,
-    align: 'center',
+    width: 200,
     render(row) {
       return h('span', row.category?.name || '-')
     },
@@ -50,8 +49,7 @@ const columns = computed(() => [
   {
     title: '品牌',
     key: 'brand',
-    minWidth: 140,
-    align: 'center',
+    width: 200,
     render(row) {
       return h('span', row.brand?.name || '-')
     },
@@ -60,7 +58,6 @@ const columns = computed(() => [
     title: '点击量',
     key: 'click_count',
     width: 100,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -72,7 +69,6 @@ const columns = computed(() => [
     title: '启用状态',
     key: 'status',
     width: 100,
-    align: 'center',
     render(row) {
       return h(NTag, { type: row.status ? 'success' : 'default' }, { default: () => (row.status ? '上架' : '下架') })
     },
@@ -81,7 +77,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,

@@ -35,14 +35,12 @@ const columns = computed(() => [
     title: '横幅内容',
     key: 'content',
     minWidth: 180,
-    align: 'center',
     ellipsis: { tooltip: true },
   },
   {
     title: '活动备注',
     key: 'note',
     minWidth: 180,
-    align: 'center',
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.note || '-')
@@ -52,7 +50,6 @@ const columns = computed(() => [
     title: '跳转路径',
     key: 'link_url',
     minWidth: 180,
-    align: 'center',
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.link_url || '-')
@@ -62,7 +59,6 @@ const columns = computed(() => [
     title: '点击量',
     key: 'click_count',
     width: 100,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -74,7 +70,6 @@ const columns = computed(() => [
     title: '启用状态',
     key: 'is_active',
     width: 100,
-    align: 'center',
     render(row) {
       return h(NTag, { type: row.is_active ? 'success' : 'default' }, { default: () => (row.is_active ? '启用' : '停用') })
     },
@@ -83,7 +78,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,

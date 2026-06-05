@@ -80,20 +80,19 @@ const columns = computed(() => [
   {
     title: '渠道名称',
     key: 'platform_name',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '自定义名称',
     key: 'custom_name',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '点击量',
     key: 'click_count',
     width: 100,
-    align: 'center',
     render(row) {
       return h(NTag, { type: 'warning' }, { default: () => String(row.click_count || 0) })
     },
@@ -102,7 +101,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 220,
-    align: 'center',
     fixed: 'right',
     render(row) {
       if (row.is_system) {

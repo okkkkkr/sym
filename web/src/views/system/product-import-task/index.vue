@@ -205,20 +205,17 @@ const columns = computed(() => [
     title: '任务ID',
     key: 'id',
     width: 90,
-    align: 'center',
   },
   {
     title: '文件名',
     key: 'filename',
     minWidth: 220,
-    align: 'center',
     ellipsis: { tooltip: true },
   },
   {
     title: '状态',
     key: 'status',
     width: 120,
-    align: 'center',
     render(row) {
       return h(
         NTag,
@@ -231,7 +228,6 @@ const columns = computed(() => [
     title: '进度',
     key: 'progress',
     width: 100,
-    align: 'center',
     render(row) {
       return `${row.progress || 0}%`
     },
@@ -240,7 +236,6 @@ const columns = computed(() => [
     title: '成功/失败',
     key: 'result',
     width: 120,
-    align: 'center',
     render(row) {
       return `${row.success_count || 0}/${row.failed_count || 0}`
     },
@@ -249,7 +244,6 @@ const columns = computed(() => [
     title: '创建时间',
     key: 'created_at',
     width: 180,
-    align: 'center',
     render(row) {
       return formatDate(row.created_at)
     },
@@ -258,7 +252,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 280,
-    align: 'center',
     render(row) {
       const actions = [
         h(

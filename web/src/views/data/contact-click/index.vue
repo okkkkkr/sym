@@ -53,22 +53,20 @@ const columns = computed(() => [
   {
     title: '平台',
     key: 'platform',
-    minWidth: 120,
-    align: 'center',
+    width: 120,
+    fixed: 'left',
     ellipsis: { tooltip: true },
   },
   {
     title: '展示名称',
     key: 'display_name',
-    minWidth: 160,
-    align: 'center',
+    width: 160,
     ellipsis: { tooltip: true },
   },
   {
     title: '联系类型',
     key: 'contact_type',
-    width: 110,
-    align: 'center',
+    width: 100,
     render(row) {
       return row.contact_type
         ? h(NTag, { type: 'info' }, { default: () => row.contact_type })
@@ -78,8 +76,7 @@ const columns = computed(() => [
   {
     title: '联系内容',
     key: 'contact_value',
-    minWidth: 200,
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.contact_value || '-')
@@ -89,7 +86,6 @@ const columns = computed(() => [
     title: '点击量',
     key: 'click_count',
     width: 100,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -101,7 +97,6 @@ const columns = computed(() => [
     title: '当前状态',
     key: 'status',
     width: 100,
-    align: 'center',
     render(row) {
       const tag = resolveStatusTag(row)
       return h(NTag, { type: tag.type }, { default: () => tag.label })

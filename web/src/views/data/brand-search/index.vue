@@ -34,15 +34,13 @@ const columns = computed(() => [
   {
     title: '品牌名称',
     key: 'name',
-    minWidth: 180,
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '类目',
     key: 'category',
-    minWidth: 140,
-    align: 'center',
+    width: 200,
     render(row) {
       return h('span', row.category?.name || '-')
     },
@@ -50,8 +48,7 @@ const columns = computed(() => [
   {
     title: '检索次数',
     key: 'search_count',
-    width: 110,
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'search_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -63,7 +60,6 @@ const columns = computed(() => [
     title: '启用状态',
     key: 'is_active',
     width: 100,
-    align: 'center',
     render(row) {
       return h(NTag, { type: row.is_active ? 'success' : 'default' }, { default: () => (row.is_active ? '启用' : '停用') })
     },
@@ -72,7 +68,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
