@@ -280,6 +280,7 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
+    align: 'center',
     width: 200,
     fixed: 'right',
     render(row) {

@@ -38,7 +38,6 @@ const columns = computed(() => [
   {
     title: '渠道访问量',
     key: 'click_count',
-    width: 120,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,

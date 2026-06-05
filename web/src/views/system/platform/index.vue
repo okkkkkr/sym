@@ -80,19 +80,16 @@ const columns = computed(() => [
   {
     title: '渠道名称',
     key: 'platform_name',
-    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '自定义名称',
     key: 'custom_name',
-    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '点击量',
     key: 'click_count',
-    width: 100,
     render(row) {
       return h(NTag, { type: 'warning' }, { default: () => String(row.click_count || 0) })
     },
@@ -100,6 +97,7 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
+    align: 'center',
     width: 220,
     fixed: 'right',
     render(row) {

@@ -41,14 +41,12 @@ const columns = [
     title: '访客标识',
     key: 'visitor_id',
     minWidth: 180,
-    align: 'center',
     ellipsis: { tooltip: true },
   },
   {
     title: '所属区域',
     key: 'region',
     minWidth: 180,
-    align: 'center',
     ellipsis: { tooltip: true },
     render(row) {
       const rawTimezone = row.region || ''
@@ -70,7 +68,6 @@ const columns = [
     title: '用户代理',
     key: 'user_agent',
     minWidth: 320,
-    align: 'center',
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.user_agent || '-')
@@ -80,7 +77,6 @@ const columns = [
     title: '访问时间',
     key: 'visited_at',
     width: 180,
-    align: 'center',
   },
 ]
 </script>

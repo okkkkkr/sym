@@ -148,6 +148,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     align: 'center',
+    align: 'center',
     render(row) {
       return [
         withDirectives(
