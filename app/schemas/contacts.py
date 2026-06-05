@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.sortable import nullable_rank_validator
 
 DEFAULT_CONTACT_QR_IMAGE_URL = "https://os.alipayobjects.com/rmsportal/QBnOOoLaAfKPirc.png"
 
@@ -30,7 +31,7 @@ class BaseContact(BaseModel):
     contact_value: Optional[str] = Field(None, description="联系方式值")
     link_url: Optional[str] = Field(None, description="跳转链接")
     qr_image_url: Optional[str] = Field(None, description="二维码图片")
-    order: int = Field(0, description="排序")
+    order: int | None = Field(None, description="排序")
     is_active: bool = Field(True, description="是否启用")
 
     @field_validator("platform", "display_name", "contact_type", "contact_value", "link_url", mode="before")
@@ -44,6 +45,8 @@ class BaseContact(BaseModel):
     @classmethod
     def normalize_qr_image_url(cls, value):
         return normalize_contact_qr_image_url(value)
+
+    _validate_order = nullable_rank_validator("order")
 
 
 class ContactCreate(BaseContact): ...

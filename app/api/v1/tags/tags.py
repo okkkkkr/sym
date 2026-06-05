@@ -9,6 +9,7 @@ from tortoise.functions import Count
 
 from app.controllers.tag import tag_controller
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
+from app.schemas.sortable import parse_import_rank_value
 from app.schemas.tags import TagCreate, TagImportItem, TagUpdate
 from app.settings import settings
 from app.utils.excel_export import build_xlsx_content
@@ -87,13 +88,22 @@ async def list_tag(
     sort_order: str | None = Query(None, description="排序方向 asc/desc"),
 ):
     q, _ = build_tag_search(name=name, is_active=is_active)
+    annotations = None
     order = tag_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "name", "search_count", "sort", "is_active", "product_count"},
     )
-    total, tag_objs = await tag_controller.list_with_product_count(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "sort":
+        annotations, order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"], sort_order)
+    total, tag_objs = await tag_controller.list_with_product_count(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     data = [await serialize_tag_payload(obj) for obj in tag_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
@@ -132,8 +142,12 @@ async def delete_tag(payload: DeleteIdsIn = Body(...)):
 @router.post("/export", summary="批量导出标签")
 async def export_tag(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_tag_ids(payload)
-    tag_objs = await tag_controller.model.filter(id__in=ids).annotate(product_count=Count("products", distinct=True)).order_by(
-        "sort", "-updated_at", "-id"
+    sort_annotations, export_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
+    tag_objs = (
+        await tag_controller.model.filter(id__in=ids)
+        .annotate(product_count=Count("products", distinct=True))
+        .annotate(**sort_annotations)
+        .order_by(*export_order)
     )
 
     rows = []
@@ -144,7 +158,7 @@ async def export_tag(payload: DeleteIdsIn = Body(...)):
                 item.get("name") or "",
                 item.get("remark") or "",
                 item.get("search_count") or 0,
-                item.get("sort") or 0,
+                item.get("sort") if item.get("sort") is not None else "",
                 item.get("product_count") or 0,
                 "启用" if item.get("is_active") else "停用",
                 item.get("updated_at") or "",
@@ -213,9 +227,12 @@ async def import_tags(file: UploadFile = File(..., description="XLSX模板文件
 
         try:
             search_count = int(row_map.get("检索次数") or 0)
-            sort = int(row_map.get("排序") or 0)
         except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"第 {index} 行检索次数或排序值不合法") from exc
+            raise HTTPException(status_code=400, detail=f"第 {index} 行检索次数不合法") from exc
+        try:
+            sort = parse_import_rank_value(row_map.get("排序"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行{exc}") from exc
 
         normalized_item = {
             "name": name,

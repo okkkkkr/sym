@@ -5,6 +5,7 @@ from tortoise.expressions import Q
 from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.product import product_controller
+from app.controllers.tag import tag_controller
 from app.core.dependency import DependAuth
 from app.models import User
 from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
@@ -38,9 +39,10 @@ async def serialize_product_payload(product_obj):
         for item in product_data.get("video_keys") or []
     ]
     product_data["product_code_custom"] = product_controller.extract_product_code_custom(product_data.get("product_code"))
+    tag_sort_annotations, tag_sort_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
     product_data["tags"] = [
         {"id": tag.id, "name": tag.name}
-        for tag in await product_obj.tags.all().order_by("sort", "-updated_at", "-id")
+        for tag in await product_obj.tags.all().annotate(**tag_sort_annotations).order_by(*tag_sort_order)
     ]
     product_data["tag_ids"] = [tag["id"] for tag in product_data["tags"]]
     return product_data
@@ -140,13 +142,22 @@ async def list_product(
         tag_id=tag_id,
         status=status,
     )
+    annotations = None
     order = product_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "name", "order", "click_count", "status"},
     )
-    total, product_objs = await product_controller.list(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "order":
+        annotations, order = product_controller.build_nullable_field_order("order", ["-updated_at", "-id"], sort_order)
+    total, product_objs = await product_controller.list(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     data = []
     for obj in product_objs:
         item = await serialize_product_payload(obj)
@@ -224,7 +235,8 @@ async def delete_product(payload: DeleteIdsIn = Body(...)):
 @router.post("/export", summary="批量导出好物")
 async def export_product(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_product_ids(payload)
-    product_objs = await product_controller.model.filter(id__in=ids).distinct().order_by("order", "-updated_at", "-id")
+    order_annotations, export_order = product_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
+    product_objs = await product_controller.model.filter(id__in=ids).distinct().annotate(**order_annotations).order_by(*export_order)
 
     category_ids = list({product.category_id for product in product_objs})
     brand_ids = list({product.brand_id for product in product_objs})

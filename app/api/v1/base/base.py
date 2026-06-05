@@ -13,6 +13,7 @@ from app.controllers.contact import contact_controller
 from app.controllers.home_layout import home_layout_controller
 from app.controllers.product import product_controller
 from app.controllers.site_config import serialize_site_config, site_config_controller
+from app.controllers.tag import tag_controller
 from app.controllers.user import user_controller
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
@@ -164,17 +165,26 @@ async def get_active_contacts(contact_type: str = ""):
     q = Q(is_active=True, is_deleted=False)
     if contact_type:
         q &= Q(contact_type=contact_type)
-    _, contact_objs = await contact_controller.list(page=1, page_size=999, search=q, order=["order", "id"])
+    order_annotations, contact_order = contact_controller.build_nullable_field_order("order", ["id"])
+    _, contact_objs = await contact_controller.list(
+        page=1,
+        page_size=999,
+        search=q,
+        order=contact_order,
+        annotations=order_annotations,
+    )
     return Success(data=[await contact_controller.serialize(obj) for obj in contact_objs])
 
 
 @router.get("/banners", summary="查看启用的横幅")
 async def get_active_banners():
+    priority_annotations, banner_order = banner_controller.build_nullable_field_order("priority", ["id"])
     _, banner_objs = await banner_controller.list(
         page=1,
         page_size=999,
         search=Q(is_active=True),
-        order=["-priority", "id"],
+        order=banner_order,
+        annotations=priority_annotations,
     )
     return Success(data=[await obj.to_dict() for obj in banner_objs])
 
@@ -227,6 +237,12 @@ async def get_dashboard_overview():
     now = datetime.now()
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+    product_order_annotations, product_overview_order = product_controller.build_nullable_field_order(
+        "order", ["-click_count", "id"]
+    )
+    brand_order_annotations, brand_overview_order = brand_controller.build_nullable_field_order(
+        "order", ["-search_count", "id"]
+    )
 
     (
         product_total,
@@ -257,8 +273,8 @@ async def get_dashboard_overview():
         Banner.filter(is_active=True).count(),
         AuditLog.filter(created_at__range=[start_of_day, end_of_day]).count(),
         SiteVisit.filter(visited_at__range=[start_of_day, end_of_day]).count(),
-        Product.all().order_by("-click_count", "order", "id").limit(10),
-        Brand.all().order_by("-search_count", "order", "id").limit(10),
+        Product.all().annotate(**product_order_annotations).order_by(*product_overview_order).limit(10),
+        Brand.all().annotate(**brand_order_annotations).order_by(*brand_overview_order).limit(10),
         AuditLog.all().order_by("-created_at").limit(6),
     )
 
@@ -439,7 +455,8 @@ def serialize_public_category(category_obj, brand_count: int = 0, product_count:
 
 
 async def get_public_categories_snapshot():
-    category_objs = await category_controller.model.filter(is_active=True).order_by("order", "id")
+    category_order_annotations, category_order = category_controller.build_nullable_field_order("order", ["id"])
+    category_objs = await category_controller.model.filter(is_active=True).annotate(**category_order_annotations).order_by(*category_order)
     brand_objs = await brand_controller.model.filter(is_active=True).prefetch_related("categories")
     product_objs = await product_controller.model.filter(status=True).all()
 
@@ -549,19 +566,27 @@ async def get_catalog(
     if keyword:
         product_q &= (Q(name__contains=keyword) | Q(desc__contains=keyword) | Q(tags__name__contains=keyword))
 
-    catalog_order = ["order", "-click_count", "-updated_at", "-id"]
-    all_products = await Product.filter(category_id=category_obj.id, status=True).prefetch_related("tags").order_by(*catalog_order)
+    catalog_order_annotations, catalog_order = product_controller.build_nullable_field_order("order", ["-click_count", "-updated_at", "-id"])
+    all_products = (
+        await Product.filter(category_id=category_obj.id, status=True)
+        .prefetch_related("tags")
+        .annotate(**catalog_order_annotations)
+        .order_by(*catalog_order)
+    )
     filtered_query = Product.filter(product_q).distinct()
     total = await filtered_query.count()
-    filtered_products = await filtered_query.offset((page - 1) * page_size).limit(page_size).order_by(*catalog_order)
+    filtered_products = await filtered_query.annotate(**catalog_order_annotations).offset((page - 1) * page_size).limit(page_size).order_by(*catalog_order)
+    brand_order_annotations, brand_order = brand_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
     _, brands = await brand_controller.list(
         page=1,
         page_size=999,
         search=Q(categories__id=category_obj.id, is_active=True),
-        order=["order", "-updated_at", "-id"],
+        order=brand_order,
+        annotations=brand_order_annotations,
     )
-    hot_brand_objs = await category_obj.hot_brands.filter(is_active=True).order_by("order", "-updated_at", "-id")
-    hot_tag_objs = await category_obj.hot_tags.filter(is_active=True).order_by("sort", "-updated_at", "-id")
+    tag_sort_annotations, tag_sort_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
+    hot_brand_objs = await category_obj.hot_brands.filter(is_active=True).annotate(**brand_order_annotations).order_by(*brand_order)
+    hot_tag_objs = await category_obj.hot_tags.filter(is_active=True).annotate(**tag_sort_annotations).order_by(*tag_sort_order)
 
     brand_count_map = {}
     tag_count_map = {}
@@ -607,11 +632,13 @@ async def get_catalog_product(product_id: int):
 
     category_obj, brand_obj = await product_controller.ensure_relations(product_obj.category_id, product_obj.brand_id)
     category_key = normalize_category_key(category_obj.name) or f"category-{category_obj.id}"
+    related_annotations, related_order = product_controller.build_nullable_field_order("order", ["-click_count", "-updated_at", "-id"])
     _, related_candidates = await product_controller.list(
         page=1,
         page_size=20,
         search=Q(category_id=product_obj.category_id, status=True),
-        order=["order", "-click_count", "-updated_at", "-id"],
+        order=related_order,
+        annotations=related_annotations,
     )
     related_products = [item for item in related_candidates if item.id != product_obj.id][:5]
 

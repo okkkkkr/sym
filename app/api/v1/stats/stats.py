@@ -191,17 +191,21 @@ async def list_product_click_stats(
     if status is not None:
         q &= Q(status=status)
 
+    annotations = None
     order = product_controller.build_order(
         default_order=["-click_count", "order", "-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"click_count", "updated_at", "order", "name", "status"},
     )
+    if sort_field == "order" or sort_field is None:
+        annotations, order = product_controller.build_nullable_field_order("order", ["-click_count", "-updated_at", "-id"], sort_order)
     total, product_objs = await product_controller.list(
         page=page,
         page_size=page_size,
         search=q,
         order=order,
+        annotations=annotations,
     )
     data = []
     for obj in product_objs:
@@ -230,17 +234,21 @@ async def list_brand_search_stats(
     if is_active is not None:
         q &= Q(is_active=is_active)
 
+    annotations = None
     order = brand_controller.build_order(
         default_order=["-search_count", "order", "-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"search_count", "updated_at", "order", "name", "is_active"},
     )
+    if sort_field == "order" or sort_field is None:
+        annotations, order = brand_controller.build_nullable_field_order("order", ["-search_count", "-updated_at", "-id"], sort_order)
     total, brand_objs = await brand_controller.list(
         page=page,
         page_size=page_size,
         search=q,
         order=order,
+        annotations=annotations,
     )
     data = []
     for obj in brand_objs:
@@ -263,17 +271,21 @@ async def list_banner_click_stats(
     if is_active is not None:
         q &= Q(is_active=is_active)
 
+    annotations = None
     order = banner_controller.build_order(
-        default_order=["-click_count", "-priority", "-updated_at", "-id"],
+        default_order=["-click_count", "priority", "-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"click_count", "updated_at", "priority", "content", "is_active"},
     )
+    if sort_field == "priority" or sort_field is None:
+        annotations, order = banner_controller.build_nullable_field_order("priority", ["-click_count", "-updated_at", "-id"], sort_order)
     total, banner_objs = await banner_controller.list(
         page=page,
         page_size=page_size,
         search=q,
         order=order,
+        annotations=annotations,
     )
     data = [await obj.to_dict() for obj in banner_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)

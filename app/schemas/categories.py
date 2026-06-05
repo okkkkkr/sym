@@ -3,6 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.sortable import nullable_rank_validator
+
 
 class HotBindingOption(BaseModel):
     id: int
@@ -26,8 +28,10 @@ class CategoryHotConfigOut(BaseModel):
 class BaseCategory(BaseModel):
     name: str = Field(..., description="类目名称", example="BAG")
     desc: Optional[str] = Field(None, description="类目描述", example="箱包")
-    order: int = Field(0, description="排序")
+    order: int | None = Field(None, description="排序")
     is_active: bool = Field(True, description="是否启用")
+
+    _validate_order = nullable_rank_validator("order")
 
 
 class CategoryCreate(BaseCategory): ...

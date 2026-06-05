@@ -14,6 +14,7 @@ from app.models.admin import Product
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
 from app.schemas.categories import CategoryCreate, CategoryHotConfigUpdate, CategoryImportItem, CategoryInheritIn, CategoryUpdate
+from app.schemas.sortable import parse_import_rank_value
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter()
@@ -89,13 +90,22 @@ async def list_category(
     sort_order: str | None = Query(None, description="排序方向 asc/desc"),
 ):
     q, _ = build_category_search(name=name, is_active=is_active)
+    annotations = None
     order = category_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "name", "order", "is_active"},
     )
-    total, category_objs = await category_controller.list(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "order":
+        annotations, order = category_controller.build_nullable_field_order("order", ["-updated_at", "-id"], sort_order)
+    total, category_objs = await category_controller.list(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     data = await asyncio.gather(*(serialize_category_payload(obj) for obj in category_objs))
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
@@ -134,7 +144,8 @@ async def delete_category(payload: DeleteIdsIn = Body(...)):
 @router.post("/export", summary="批量导出类目")
 async def export_category(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_category_ids(payload)
-    category_objs = await category_controller.model.filter(id__in=ids).order_by("order", "-updated_at", "-id")
+    order_annotations, export_order = category_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
+    category_objs = await category_controller.model.filter(id__in=ids).annotate(**order_annotations).order_by(*export_order)
 
     rows = []
     for category_obj in category_objs:
@@ -144,7 +155,7 @@ async def export_category(payload: DeleteIdsIn = Body(...)):
                 item.get("name") or "",
                 item.get("desc") or "",
                 item.get("product_count") or 0,
-                item.get("order") or 0,
+                item.get("order") if item.get("order") is not None else "",
                 "启用" if item.get("is_active") else "停用",
                 item.get("updated_at") or "",
             ]
@@ -207,9 +218,9 @@ async def import_categories(file: UploadFile = File(..., description="XLSX模板
             raise HTTPException(status_code=400, detail=f"第 {index} 行分类名称不能为空")
 
         try:
-            order = int(row_map.get("排序") or 0)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"第 {index} 行排序值不合法") from exc
+            order = parse_import_rank_value(row_map.get("排序"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行{exc}") from exc
 
         normalized_item = {
             "name": name,
@@ -236,10 +247,15 @@ async def import_categories(file: UploadFile = File(..., description="XLSX模板
 @router.get("/hot-config", summary="查看类目热门配置")
 async def get_category_hot_config(id: int = Query(..., description="类目ID")):
     category_obj = await category_controller.get(id=id)
-    brands = await brand_controller.model.filter(categories__id=category_obj.id, is_active=True).distinct().order_by(
-        "order", "-updated_at", "-id"
+    brand_order_annotations, brand_order = brand_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
+    tag_sort_annotations, tag_sort_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
+    brands = (
+        await brand_controller.model.filter(categories__id=category_obj.id, is_active=True)
+        .distinct()
+        .annotate(**brand_order_annotations)
+        .order_by(*brand_order)
     )
-    tags = await tag_controller.model.all().order_by("sort", "-updated_at", "-id")
+    tags = await tag_controller.model.all().annotate(**tag_sort_annotations).order_by(*tag_sort_order)
     hot_brand_ids = [brand.id for brand in await category_obj.hot_brands.all()]
     hot_tag_ids = [tag.id for tag in await category_obj.hot_tags.all()]
     return Success(

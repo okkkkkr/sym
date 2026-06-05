@@ -47,7 +47,7 @@ const initForm = {
   name: '',
   remark: '',
   search_count: 0,
-  sort: 0,
+  sort: null,
   is_active: true,
 }
 
@@ -145,7 +145,7 @@ const columns = computed(() => [
   {
     title: '标签名称',
     key: 'name',
-    align: 'center',
+    width: '200',
     ellipsis: { tooltip: true },
     sorter: true,
     sortOrder: sorter.value.columnKey === 'name' ? sorter.value.order : false,
@@ -154,7 +154,7 @@ const columns = computed(() => [
   {
     title: '备注',
     key: 'remark',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.remark || '-')
@@ -163,7 +163,7 @@ const columns = computed(() => [
   {
     title: '检索次数',
     key: 'search_count',
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'search_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -174,15 +174,18 @@ const columns = computed(() => [
   {
     title: '排序',
     key: 'sort',
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'sort' ? sorter.value.order : false,
     customNextSortOrder,
+    render(row) {
+      return h(NTag, { type: 'default' }, { default: () => (row.sort ?? '未设置') })
+    },
   },
   {
-    title: '关联好物数',
+    title: '关联好物',
     key: 'product_count',
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'product_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -202,7 +205,6 @@ const columns = computed(() => [
     title: '启用状态',
     key: 'is_active',
     width: 100,
-    align: 'center',
     render(row) {
       return withDirectives(
         h(NSwitch, {
@@ -220,7 +222,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
@@ -232,7 +233,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 120,
-    align: 'center',
     fixed: 'right',
     render(row) {
       return h('div', { style: actionCellStyle }, [
@@ -458,7 +458,13 @@ async function handleBatchExport(scope) {
           <NInputNumber v-model:value="modalForm.search_count" clearable :min="0" style="width: 100%" />
         </NFormItem>
         <NFormItem label="排序" path="sort">
-          <NInputNumber v-model:value="modalForm.sort" clearable :min="0" style="width: 100%" />
+          <NInputNumber
+            v-model:value="modalForm.sort"
+            clearable
+            :min="1"
+            placeholder="从 1 开始，留空表示未设置"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="启用状态" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />

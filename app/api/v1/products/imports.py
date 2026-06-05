@@ -65,7 +65,7 @@ PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
     "标签A;标签B",
     "SKU-A1001",
     "1",
-    0,
+    None,
 ]
 
 SAMPLE_PNG_BYTES = b64decode(

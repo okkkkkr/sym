@@ -39,7 +39,7 @@ class ProductImportParsedRow(BaseModel):
     tag_ids: list[int] = Field(default_factory=list, description="标签ID列表")
     product_code_custom: str | None = Field(default=None, description="识别码自定义字符串")
     status: bool = Field(default=True, description="是否上架")
-    order: int = Field(default=0, description="排序值")
+    order: int | None = Field(default=None, description="排序值")
     detail_description: list[Any] = Field(default_factory=list, description="结构化详情")
     duplicate_hint: bool = Field(default=False, description="是否疑似重复")
     errors: list[str] = Field(default_factory=list, description="预校验错误")

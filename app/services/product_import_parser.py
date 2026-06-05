@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from app.models.admin import Brand, Category, Product, Tag
 from app.schemas.product_import import ProductImportParseResult, ProductImportParsedRow
+from app.schemas.sortable import parse_import_rank_value
 
 
 class ProductImportParserService:
@@ -240,13 +241,15 @@ class ProductImportParserService:
         return True, "上架状态仅支持 true/false/1/0/是/否"
 
     @staticmethod
-    def _parse_order(value: str) -> tuple[int, str | None]:
+    def _parse_order(value: str) -> tuple[int | None, str | None]:
         if not value:
-            return 0, None
+            return None, None
         try:
-            return int(str(value).strip()), None
-        except (TypeError, ValueError):
-            return 0, "排序必须是整数"
+            return parse_import_rank_value(value), None
+        except ValueError as exc:
+            if "整数" in str(exc):
+                return None, None
+            return None, str(exc)
 
     def _parse_detail_description(self, detail_text: str, detail_description_json: str):
         if detail_description_json:

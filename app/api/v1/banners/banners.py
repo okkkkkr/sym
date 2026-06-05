@@ -25,13 +25,22 @@ async def list_banner(
         q &= Q(note__contains=note)
     if is_active is not None:
         q &= Q(is_active=is_active)
+    annotations = None
     order = banner_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "content", "priority", "click_count", "is_active"},
     )
-    total, banner_objs = await banner_controller.list(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "priority":
+        annotations, order = banner_controller.build_nullable_field_order("priority", ["-updated_at", "-id"], sort_order)
+    total, banner_objs = await banner_controller.list(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     return SuccessExtra(data=[await obj.to_dict() for obj in banner_objs], total=total, page=page, page_size=page_size)
 
 

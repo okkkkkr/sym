@@ -14,6 +14,7 @@ from app.models.admin import Product
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
 from app.schemas.brands import BrandCreate, BrandImportItem, BrandInheritIn, BrandUpdate
+from app.schemas.sortable import parse_import_rank_value
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter()
@@ -120,13 +121,22 @@ async def list_brand(
     sort_order: str | None = Query(None, description="排序方向 asc/desc"),
 ):
     q, _ = build_brand_search(name=name, category_id=category_id, is_active=is_active)
+    annotations = None
     order = brand_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "name", "order", "search_count", "is_active"},
     )
-    total, brand_objs = await brand_controller.list(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "order":
+        annotations, order = brand_controller.build_nullable_field_order("order", ["-updated_at", "-id"], sort_order)
+    total, brand_objs = await brand_controller.list(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     data = await asyncio.gather(*(serialize_brand_payload(obj) for obj in brand_objs))
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
@@ -168,7 +178,8 @@ async def delete_brand(payload: DeleteIdsIn = Body(...)):
 @router.post("/export", summary="批量导出品牌")
 async def export_brand(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_brand_ids(payload)
-    brand_objs = await brand_controller.model.filter(id__in=ids).distinct().order_by("order", "-updated_at", "-id")
+    order_annotations, export_order = brand_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
+    brand_objs = await brand_controller.model.filter(id__in=ids).distinct().annotate(**order_annotations).order_by(*export_order)
 
     rows = []
     for brand_obj in brand_objs:
@@ -182,7 +193,7 @@ async def export_brand(payload: DeleteIdsIn = Body(...)):
                 item.get("search_count") or 0,
                 "启用" if item.get("is_active") else "停用",
                 item.get("updated_at") or "",
-                item.get("order") or 0,
+                item.get("order") if item.get("order") is not None else "",
             ]
         )
 
@@ -261,9 +272,12 @@ async def import_brands(file: UploadFile = File(..., description="XLSX模板文�
 
         try:
             search_count = int(row_map.get("检索次数") or 0)
-            order = int(row_map.get("排序") or 0)
         except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"第 {index} 行检索次数或排序值不合法") from exc
+            raise HTTPException(status_code=400, detail=f"第 {index} 行检索次数不合法") from exc
+        try:
+            order = parse_import_rank_value(row_map.get("排序"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"第 {index} 行{exc}") from exc
 
         normalized_item = {
             "name": name,

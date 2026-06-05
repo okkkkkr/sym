@@ -48,7 +48,7 @@ class Menu(BaseModel, TimestampMixin):
     menu_type = fields.CharEnumField(MenuType, null=True, description="菜单类型")
     icon = fields.CharField(max_length=100, null=True, description="菜单图标")
     path = fields.CharField(max_length=100, description="菜单路径", index=True)
-    order = fields.IntField(default=0, description="排序", index=True)
+    order = fields.IntField(null=True, description="排序", index=True)
     parent_id = fields.IntField(default=0, description="父菜单ID", index=True)
     is_hidden = fields.BooleanField(default=False, description="是否隐藏")
     component = fields.CharField(max_length=100, description="组件")
@@ -200,7 +200,7 @@ class Tag(BaseModel, TimestampMixin):
     name = fields.CharField(max_length=100, unique=True, description="标签名称", index=True)
     remark = fields.CharField(max_length=255, null=True, description="备注")
     search_count = fields.IntField(default=0, description="检索次数", index=True)
-    sort = fields.IntField(default=0, description="排序", index=True)
+    sort = fields.IntField(null=True, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
 
     class Meta:
@@ -215,7 +215,7 @@ class Brand(BaseModel, TimestampMixin):
     name = fields.CharField(max_length=100, description="品牌名称", index=True)
     desc = fields.CharField(max_length=255, null=True, description="品牌描述")
     search_count = fields.IntField(default=0, description="搜索次数", index=True)
-    order = fields.IntField(default=0, description="排序", index=True)
+    order = fields.IntField(null=True, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
 
     class Meta:
@@ -229,7 +229,7 @@ class Contact(BaseModel, TimestampMixin):
     contact_value = fields.CharField(max_length=255, null=True, description="联系方式值")
     link_url = fields.CharField(max_length=500, null=True, description="跳转链接")
     qr_image_url = fields.CharField(max_length=500, null=True, description="二维码图片")
-    order = fields.IntField(default=0, description="排序", index=True)
+    order = fields.IntField(null=True, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
     is_deleted = fields.BooleanField(default=False, description="是否已删除", index=True)
     deleted_at = fields.DatetimeField(null=True, description="删除时间", index=True)
@@ -265,7 +265,7 @@ class ContactClickDedup(BaseModel):
 class Banner(BaseModel, TimestampMixin):
     content = fields.CharField(max_length=255, description="横幅内容")
     note = fields.CharField(max_length=255, null=True, description="活动备注")
-    priority = fields.IntField(default=0, description="优先级", index=True)
+    priority = fields.IntField(null=True, description="优先级", index=True)
     link_url = fields.CharField(max_length=500, null=True, description="跳转路径")
     click_count = fields.IntField(default=0, description="点击量", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
@@ -287,7 +287,7 @@ class Product(BaseModel, TimestampMixin):
     video_keys = fields.JSONField(default=list, description="视频对象 Key 列表")
     click_count = fields.IntField(default=0, description="点击量", index=True)
     status = fields.BooleanField(default=True, description="是否上架", index=True)
-    order = fields.IntField(default=0, description="排序", index=True)
+    order = fields.IntField(null=True, description="排序", index=True)
 
     class Meta:
         table = "product"

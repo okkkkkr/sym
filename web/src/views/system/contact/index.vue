@@ -64,7 +64,7 @@ const initForm = {
   contact_value: '',
   link_url: '',
   qr_image_url: '',
-  order: 0,
+  order: null,
   is_active: true,
 }
 
@@ -313,20 +313,19 @@ const columns = computed(() => [
   {
     title: '平台',
     key: 'platform',
-    align: 'center',
+    width: 100,
     ellipsis: { tooltip: true },
   },
   {
     title: '展示名称',
     key: 'display_name',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '联系类型',
     key: 'contact_type',
-    width: 110,
-    align: 'center',
+    width: 100,
     render(row) {
       return row.contact_type
         ? h(NTag, { type: 'info' }, { default: () => row.contact_type })
@@ -336,14 +335,13 @@ const columns = computed(() => [
   {
     title: '联系内容',
     key: 'contact_value',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '二维码',
     key: 'qr_image_url',
-    width: 110,
-    align: 'center',
+    width: 120,
     render(row) {
       const qrImagePreviewUrl = getQrPreviewUrl(row)
       if (!qrImagePreviewUrl) {
@@ -357,10 +355,20 @@ const columns = computed(() => [
     },
   },
   {
+    title: '排序',
+    key: 'order',
+    width: 100,
+    sorter: true,
+    sortOrder: sorter.value.columnKey === 'order' ? sorter.value.order : false,
+    customNextSortOrder,
+    render(row) {
+      return h(NTag, { type: 'default' }, { default: () => (row.order ?? '未设置') })
+    },
+  },
+  {
     title: '启用状态',
     key: 'is_active',
-    width: 90,
-    align: 'center',
+    width: 100,
     render(row) {
       return withDirectives(
         h(NSwitch, {
@@ -378,7 +386,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
@@ -390,7 +397,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 120,
-    align: 'center',
     fixed: 'right',
     render(row) {
       return h('div', { style: actionCellStyle }, [
@@ -562,7 +568,13 @@ async function toggleStatus(row, nextValue) {
           </NUpload>
         </NFormItem>
         <NFormItem label="排序" path="order">
-          <NInputNumber v-model:value="modalForm.order" clearable :min="0" style="width: 100%" />
+          <NInputNumber
+            v-model:value="modalForm.order"
+            clearable
+            :min="1"
+            placeholder="从 1 开始，留空表示未设置"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="启用状态" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />

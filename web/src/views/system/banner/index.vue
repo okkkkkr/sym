@@ -24,7 +24,7 @@ const actionCellStyle = 'display: flex; justify-content: center; align-items: ce
 const initForm = {
   content: '',
   note: '',
-  priority: 0,
+  priority: null,
   link_url: '',
   is_active: true,
 }
@@ -93,13 +93,13 @@ const columns = computed(() => [
   {
     title: '横幅内容',
     key: 'content',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '备注',
     key: 'note',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.note || '-')
@@ -109,19 +109,17 @@ const columns = computed(() => [
     title: '排序',
     key: 'priority',
     width: 100,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'priority' ? sorter.value.order : false,
     customNextSortOrder,
     render(row) {
-      return h(NTag, { type: 'info' }, { default: () => String(row.priority ?? 0) })
+      return h(NTag, { type: 'info' }, { default: () => (row.priority ?? '未设置') })
     },
   },
   {
     title: '点击量',
     key: 'click_count',
     width: 100,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -132,7 +130,7 @@ const columns = computed(() => [
   {
     title: '跳转路径',
     key: 'link_url',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.link_url || '-')
@@ -141,8 +139,7 @@ const columns = computed(() => [
   {
     title: '启用状态',
     key: 'is_active',
-    width: 90,
-    align: 'center',
+    width: 100,
     render(row) {
       return withDirectives(
         h(NSwitch, {
@@ -160,7 +157,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
@@ -172,7 +168,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 120,
-    align: 'center',
     fixed: 'right',
     render(row) {
       return h('div', { style: actionCellStyle }, [
@@ -316,7 +311,13 @@ async function toggleStatus(row, nextValue) {
           <NInput v-model:value="modalForm.note" maxlength="255" show-count placeholder="请输入备注，便于标记活动" />
         </NFormItem>
         <NFormItem label="排序" path="priority">
-          <NInputNumber v-model:value="modalForm.priority" class="w-full" :min="0" />
+          <NInputNumber
+            v-model:value="modalForm.priority"
+            class="w-full"
+            clearable
+            :min="1"
+            placeholder="从 1 开始，留空表示未设置"
+          />
         </NFormItem>
         <NFormItem label="跳转路径" path="link_url">
           <NInput v-model:value="modalForm.link_url" placeholder="请输入站内路径或完整链接" />

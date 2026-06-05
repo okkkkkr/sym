@@ -3,14 +3,18 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.sortable import nullable_rank_validator
+
 
 class BaseBrand(BaseModel):
     category_ids: list[int] = Field(default_factory=list, description="类目ID列表")
     name: str = Field(..., description="品牌名称", example="SYMBOL")
     desc: Optional[str] = Field(None, description="品牌描述")
     search_count: int = Field(0, description="搜索次数")
-    order: int = Field(0, description="排序")
+    order: int | None = Field(None, description="排序")
     is_active: bool = Field(True, description="是否启用")
+
+    _validate_order = nullable_rank_validator("order")
 
 
 class BrandCreate(BaseBrand): ...

@@ -106,7 +106,7 @@ const initForm = () => ({
   video_file_list: [],
   click_count: 0,
   status: true,
-  order: 0,
+  order: null,
 })
 
 const modalForm = ref(initForm())
@@ -403,15 +403,13 @@ const columns = computed(() => [
   {
     title: '好物名称',
     key: 'name',
-    width: 180,
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '好物识别码',
     key: 'product_code',
-    minWidth: 170,
-    align: 'center',
+    width: 250,
     ellipsis: { tooltip: true },
     render(row) {
       return h('span', row.product_code || '-')
@@ -420,7 +418,7 @@ const columns = computed(() => [
   {
     title: '所属品牌',
     key: 'brand',
-    minWidth: 130,
+    width: 200,
     align: 'center',
     render(row) {
       return h('span', row.brand_name || row.brand?.name || '-')
@@ -429,8 +427,7 @@ const columns = computed(() => [
   {
     title: '所属分类',
     key: 'category',
-    width: 120,
-    align: 'center',
+    width: 200,
     render(row) {
       return h('span', row.category_name || row.category?.name || '-')
     },
@@ -438,15 +435,14 @@ const columns = computed(() => [
   {
     title: '关联标签',
     key: 'tags',
-    minWidth: 220,
-    align: 'center',
+    width: 120,
     render(row) {
       if (!row.tags?.length) {
         return h('span', '-')
       }
       return h(
         'div',
-        { style: 'display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;' },
+        { style: 'display: flex; flex-wrap: wrap; gap: 6px;' },
         row.tags.map((item) =>
           h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => item.name })
         )
@@ -456,8 +452,7 @@ const columns = computed(() => [
   {
     title: '点击量',
     key: 'click_count',
-    width: 90,
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'click_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -466,10 +461,17 @@ const columns = computed(() => [
     },
   },
   {
+    title: '排序',
+    key: 'order',
+    width: 100,
+    render(row) {
+      return h('span', row.order ?? '未设置')
+    },
+  },
+  {
     title: '上架状态',
     key: 'status',
-    width: 90,
-    align: 'center',
+    width: 100,
     render(row) {
       return withDirectives(
         h(NSwitch, {
@@ -488,7 +490,6 @@ const columns = computed(() => [
     title: '封面',
     key: 'cover_image_url',
     width: 100,
-    align: 'center',
     render(row) {
       return h(NImage, {
         width: 56,
@@ -501,7 +502,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
@@ -513,7 +513,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 120,
-    align: 'center',
     fixed: 'right',
     render(row) {
       return h('div', { style: actionCellStyle }, [
@@ -621,7 +620,7 @@ function openEditModal(row) {
     video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_keys || []),
     click_count: row.click_count || 0,
     status: row.status,
-    order: row.order || 0,
+    order: row.order ?? null,
   }
   syncModalBrand()
   modalVisible.value = true
@@ -686,7 +685,7 @@ function buildProductPayload() {
     video_keys: buildUploadKeys(modalForm.value.video_file_list),
     click_count: Number(modalForm.value.click_count || 0),
     status: !!modalForm.value.status,
-    order: Number(modalForm.value.order || 0),
+    order: modalForm.value.order ?? null,
   }
 }
 
@@ -795,7 +794,7 @@ async function toggleStatus(row, nextValue) {
     video_keys: row.video_keys || [],
     click_count: row.click_count || 0,
     status: nextValue,
-    order: row.order || 0,
+    order: row.order ?? null,
   })
   $message.success(nextValue ? '好物已上架' : '好物已下架')
   $table.value?.handleSearch()
@@ -1011,7 +1010,13 @@ onBeforeUnmount(() => {
               <NInputNumber v-model:value="modalForm.click_count" :min="0" style="width: 100%" />
             </NFormItem>
             <NFormItem label="排序" path="order">
-              <NInputNumber v-model:value="modalForm.order" :min="0" style="width: 100%" />
+              <NInputNumber
+                v-model:value="modalForm.order"
+                clearable
+                :min="1"
+                placeholder="从 1 开始，留空表示未设置"
+                style="width: 100%"
+              />
             </NFormItem>
             <NFormItem label="上架状态" path="status">
               <NSwitch v-model:value="modalForm.status" />

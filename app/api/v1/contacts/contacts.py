@@ -29,13 +29,22 @@ async def list_contact(
         q &= Q(contact_type=contact_type)
     if is_active is not None:
         q &= Q(is_active=is_active)
+    annotations = None
     order = contact_controller.build_order(
         default_order=["-updated_at", "-id"],
         sort_field=sort_field,
         sort_order=sort_order,
         allowed_fields={"updated_at", "platform", "display_name", "order", "is_active"},
     )
-    total, contact_objs = await contact_controller.list(page=page, page_size=page_size, search=q, order=order)
+    if sort_field == "order":
+        annotations, order = contact_controller.build_nullable_field_order("order", ["-updated_at", "-id"], sort_order)
+    total, contact_objs = await contact_controller.list(
+        page=page,
+        page_size=page_size,
+        search=q,
+        order=order,
+        annotations=annotations,
+    )
     data = [await contact_controller.serialize(obj, include_preview=True) for obj in contact_objs]
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 

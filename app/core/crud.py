@@ -1,7 +1,7 @@
 from typing import Any, Dict, Generic, List, NewType, Tuple, Type, TypeVar, Union
 
 from pydantic import BaseModel
-from tortoise.expressions import Q
+from tortoise.expressions import Case, Q, When
 from tortoise.models import Model
 
 Total = NewType("Total", int)
@@ -30,11 +30,44 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         fallback_order = [item for item in default_order if item.lstrip("-") != sort_field]
         return [requested_order, *fallback_order]
 
+    @staticmethod
+    def build_nullable_field_order(
+        field_name: str,
+        fallback_order: list[str],
+        sort_order: str | None = None,
+    ) -> tuple[dict[str, Any], list[str]]:
+        normalized_sort_order = str(sort_order or "asc").lower()
+        prefix = "" if normalized_sort_order == "asc" else "-"
+        annotation_name = f"__{field_name}_null_rank"
+        filtered_fallback_order = [
+            item
+            for item in fallback_order
+            if item.lstrip("-") not in {field_name, annotation_name}
+        ]
+        return (
+            {
+                annotation_name: Case(
+                    When(**{f"{field_name}__isnull": True}, then=1),
+                    default=0,
+                )
+            },
+            [annotation_name, f"{prefix}{field_name}", *filtered_fallback_order],
+        )
+
     async def get(self, id: int) -> ModelType:
         return await self.model.get(id=id)
 
-    async def list(self, page: int, page_size: int, search: Q = Q(), order: list = []) -> Tuple[Total, List[ModelType]]:
+    async def list(
+        self,
+        page: int,
+        page_size: int,
+        search: Q = Q(),
+        order: list = [],
+        annotations: dict[str, Any] | None = None,
+    ) -> Tuple[Total, List[ModelType]]:
         query = self.model.filter(search)
+        if annotations:
+            query = query.annotate(**annotations)
         return await query.count(), await query.offset((page - 1) * page_size).limit(page_size).order_by(*order)
 
     async def create(self, obj_in: CreateSchemaType) -> ModelType:

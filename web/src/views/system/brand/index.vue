@@ -51,14 +51,15 @@ const inheritForm = ref({
 const relationModalVisible = ref(false)
 const relationModalTitle = ref('关联好物')
 const relationModalFilters = ref({})
-const actionCellStyle = 'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;'
+const actionCellStyle =
+  'display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;'
 
 const initForm = {
   category_ids: [],
   name: '',
   desc: '',
   search_count: 0,
-  order: 0,
+  order: null,
   is_active: true,
 }
 
@@ -122,7 +123,10 @@ async function loadCategories() {
   if (categoryOptions.value.length > 0) {
     initForm.category_ids = [categoryOptions.value[0].value]
   }
-  if ((!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) && categoryOptions.value.length > 0) {
+  if (
+    (!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) &&
+    categoryOptions.value.length > 0
+  ) {
     modalForm.value.category_ids = [categoryOptions.value[0].value]
   }
 }
@@ -134,13 +138,19 @@ onMounted(async () => {
 
 function openAddModal() {
   handleAdd()
-  if ((!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) && categoryOptions.value.length > 0) {
+  if (
+    (!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) &&
+    categoryOptions.value.length > 0
+  ) {
     modalForm.value.category_ids = [categoryOptions.value[0].value]
   }
 }
 
 function handleBrandSave() {
-  if ((!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) && categoryOptions.value.length > 0) {
+  if (
+    (!modalForm.value.category_ids || modalForm.value.category_ids.length === 0) &&
+    categoryOptions.value.length > 0
+  ) {
     modalForm.value.category_ids = [categoryOptions.value[0].value]
   }
   if (!modalForm.value.category_ids?.length) {
@@ -157,7 +167,9 @@ function openProductRelationModal(row) {
 }
 
 const hasCheckedRows = computed(() => checkedRowKeys.value.length > 0)
-const hasActiveFilters = computed(() => Object.values(queryItems.value).some(isEffectiveFilterValue))
+const hasActiveFilters = computed(() =>
+  Object.values(queryItems.value).some(isEffectiveFilterValue),
+)
 
 function isEffectiveFilterValue(value) {
   if (Array.isArray(value)) return value.length > 0
@@ -174,13 +186,13 @@ const columns = computed(() => [
   {
     title: '品牌名称',
     key: 'name',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
     title: '所属分类',
     key: 'categories',
-    align: 'center',
+    width: 200,
     render(row) {
       const categoryNames = (row.categories || []).map((item) => item.name).filter(Boolean)
       if (!categoryNames.length) {
@@ -188,21 +200,21 @@ const columns = computed(() => [
       }
       return h(
         'div',
-        { style: 'display: flex; flex-direction: column; align-items: center; gap: 4px;' },
-        categoryNames.map((name) => h('span', name))
+        { style: 'display: flex; flex-direction: column; gap: 4px;' },
+        categoryNames.map((name) => h('span', name)),
       )
     },
   },
   {
     title: '品牌描述',
     key: 'desc',
-    align: 'center',
+    width: 200,
     ellipsis: { tooltip: true },
   },
   {
-    title: '关联好物数',
+    title: '关联好物',
     key: 'product_count',
-    align: 'center',
+    width: 100,
     render(row) {
       return h(
         NTag,
@@ -211,14 +223,14 @@ const columns = computed(() => [
           style: 'cursor: pointer;',
           onClick: () => openProductRelationModal(row),
         },
-        { default: () => String(row.product_count ?? 0) }
+        { default: () => String(row.product_count ?? 0) },
       )
     },
   },
   {
     title: '检索次数',
     key: 'search_count',
-    align: 'center',
+    width: 100,
     sorter: true,
     sortOrder: sorter.value.columnKey === 'search_count' ? sorter.value.order : false,
     customNextSortOrder,
@@ -227,9 +239,20 @@ const columns = computed(() => [
     },
   },
   {
+    title: '排序',
+    key: 'order',
+    width: 100,
+    sorter: true,
+    sortOrder: sorter.value.columnKey === 'order' ? sorter.value.order : false,
+    customNextSortOrder,
+    render(row) {
+      return h(NTag, { type: 'default' }, { default: () => (row.order ?? '未设置') })
+    },
+  },
+  {
     title: '启用状态',
     key: 'is_active',
-    align: 'center',
+    width: 100,
     render(row) {
       return withDirectives(
         h(NSwitch, {
@@ -239,7 +262,7 @@ const columns = computed(() => [
           loading: statusUpdatingIds.value.includes(row.id),
           onUpdateValue: (value) => handleStatusSwitch(row, value),
         }),
-        [[vPermission, 'post/api/v1/brand/update']]
+        [[vPermission, 'post/api/v1/brand/update']],
       )
     },
   },
@@ -247,7 +270,6 @@ const columns = computed(() => [
     title: '更新时间',
     key: 'updated_at',
     width: 180,
-    align: 'center',
     sorter: true,
     sortOrder: sorter.value.columnKey === 'updated_at' ? sorter.value.order : false,
     customNextSortOrder,
@@ -259,7 +281,6 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 200,
-    align: 'center',
     fixed: 'right',
     render(row) {
       return h('div', { style: actionCellStyle }, [
@@ -274,9 +295,9 @@ const columns = computed(() => [
             },
             {
               default: () => '内容继承',
-            }
+            },
           ),
-          [[vPermission, 'post/api/v1/brand/inherit']]
+          [[vPermission, 'post/api/v1/brand/inherit']],
         ),
         withDirectives(
           h(
@@ -291,9 +312,9 @@ const columns = computed(() => [
             },
             {
               default: () => '编辑',
-            }
+            },
           ),
-          [[vPermission, 'post/api/v1/brand/update']]
+          [[vPermission, 'post/api/v1/brand/update']],
         ),
         h(
           NPopconfirm,
@@ -312,12 +333,12 @@ const columns = computed(() => [
                   },
                   {
                     default: () => '删除',
-                  }
+                  },
                 ),
-                [[vPermission, 'delete/api/v1/brand/delete']]
+                [[vPermission, 'delete/api/v1/brand/delete']],
               ),
             default: () => h('div', {}, '确定删除该品牌吗?'),
-          }
+          },
         ),
       ])
     },
@@ -462,7 +483,7 @@ function handleBatchDelete(scope) {
         batchDeleteModalVisible.value = false
         clearSelection()
       },
-    }
+    },
   )
 }
 
@@ -485,17 +506,39 @@ async function handleBatchExport(scope) {
 <template>
   <CommonPage show-footer title="品牌列表">
     <template #action>
-      <input ref="fileInputRef" type="file" accept=".xlsx" style="display: none" @change="handleFileChange" />
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept=".xlsx"
+        style="display: none"
+        @change="handleFileChange"
+      />
       <NButton type="default" :loading="importLoading" @click="downloadTemplate">
         <TheIcon icon="mdi:download-box-outline" :size="18" class="mr-5" />下载导入模板
       </NButton>
-      <NButton v-permission="'post/api/v1/brand/import'" type="default" :loading="importLoading" @click="triggerImport">
+      <NButton
+        v-permission="'post/api/v1/brand/import'"
+        type="default"
+        :loading="importLoading"
+        @click="triggerImport"
+      >
         <TheIcon icon="material-symbols:upload-file-outline" :size="18" class="mr-5" />批量导入
       </NButton>
-      <NButton v-permission="'post/api/v1/brand/export'" type="default" :loading="exportLoading" @click="openBatchExportModal">
+      <NButton
+        v-permission="'post/api/v1/brand/export'"
+        type="default"
+        :loading="exportLoading"
+        @click="openBatchExportModal"
+      >
         <TheIcon icon="mdi:file-export-outline" :size="18" class="mr-5" />批量导出
       </NButton>
-      <NButton v-permission="'delete/api/v1/brand/delete'" type="error" secondary :loading="modalLoading" @click="openBatchDeleteModal">
+      <NButton
+        v-permission="'delete/api/v1/brand/delete'"
+        type="error"
+        secondary
+        :loading="modalLoading"
+        @click="openBatchDeleteModal"
+      >
         <TheIcon icon="material-symbols:delete-outline" :size="18" class="mr-5" />批量删除
       </NButton>
       <NButton v-permission="'post/api/v1/brand/create'" type="primary" @click="openAddModal">
@@ -571,10 +614,21 @@ async function handleBatchExport(scope) {
           <NInput v-model:value="modalForm.desc" clearable placeholder="请输入品牌描述" />
         </NFormItem>
         <NFormItem label="检索次数" path="search_count">
-          <NInputNumber v-model:value="modalForm.search_count" clearable :min="0" style="width: 100%" />
+          <NInputNumber
+            v-model:value="modalForm.search_count"
+            clearable
+            :min="0"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="排序" path="order">
-          <NInputNumber v-model:value="modalForm.order" clearable :min="0" style="width: 100%" />
+          <NInputNumber
+            v-model:value="modalForm.order"
+            clearable
+            :min="1"
+            placeholder="从 1 开始，留空表示未设置"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="启用状态" path="is_active">
           <NSwitch v-model:value="modalForm.is_active" />
