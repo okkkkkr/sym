@@ -37,13 +37,15 @@ const detailLoading = ref(false)
 const detailStatus = ref(null)
 const detailPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const pollingTimer = ref(null)
-const activeTaskStatuses = ['pending', 'uploading', 'queued', 'running']
-const finalTaskStatuses = ['success', 'warn', 'failed', 'canceled']
+const activeTaskStatuses = ['pending', 'uploading', 'validating', 'queued', 'running']
+const finalTaskStatuses = ['validation_failed', 'success', 'warn', 'failed', 'canceled']
 
 const statusOptions = [
   { label: '全部状态', value: null },
   { label: '待处理', value: 'pending' },
   { label: '上传中', value: 'uploading' },
+  { label: '检测中', value: 'validating' },
+  { label: '检测失败', value: 'validation_failed' },
   { label: '排队中', value: 'queued' },
   { label: '同步中', value: 'running' },
   { label: '成功', value: 'success' },
@@ -63,14 +65,15 @@ function canAccess(permission) {
 
 function statusTagType(status) {
   if (status === 'success') return 'success'
-  if (status === 'warn' || status === 'running') return 'warning'
-  if (status === 'failed') return 'error'
+  if (status === 'warn' || status === 'running' || status === 'validating') return 'warning'
+  if (status === 'failed' || status === 'validation_failed') return 'error'
   return 'info'
 }
 
 function itemStatusTagType(status) {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
+  if (status === 'validated') return 'info'
   return 'warning'
 }
 
@@ -81,14 +84,6 @@ function statusLabel(status) {
     status ||
     '-'
   )
-}
-
-function canRetryTask(row) {
-  return ['failed', 'warn', 'canceled'].includes(row?.status)
-}
-
-function canRetryFailedRows(row) {
-  return canRetryTask(row) && Number(row?.failed_count || 0) > 0
 }
 
 function canCancelTask(row) {
@@ -105,7 +100,9 @@ function canDownloadErrorReport(row) {
 
 function taskPhaseDescription(status) {
   if (status === 'uploading') return '正在接收 ZIP 分片'
-  if (status === 'queued') return 'ZIP 已接收完成，等待后台处理'
+  if (status === 'validating') return '正在执行合法性检测'
+  if (status === 'validation_failed') return '合法性检测未通过，未开始同步'
+  if (status === 'queued') return '合法性检测通过，等待后台同步'
   if (status === 'running') return '正在解析 ZIP、上传素材到七牛并写入数据库'
   if (status === 'success') return '导入已完成'
   if (status === 'warn') return '导入已完成，存在部分失败项'
@@ -118,9 +115,11 @@ const taskSummaryCards = computed(() => {
   const tasks = tableData.value || []
   const total = tasks.length
   const runningCount = tasks.filter((item) => activeTaskStatuses.includes(item.status)).length
-  const failedCount = tasks.filter((item) => ['warn', 'failed'].includes(item.status)).length
+  const failedCount = tasks.filter((item) =>
+    ['validation_failed', 'warn', 'failed'].includes(item.status)
+  ).length
   const latestFinished = tasks.find((item) =>
-    ['success', 'warn', 'failed', 'canceled'].includes(item.status)
+    ['validation_failed', 'success', 'warn', 'failed', 'canceled'].includes(item.status)
   )
 
   return [
@@ -134,7 +133,9 @@ const taskSummaryCards = computed(() => {
       key: 'running',
       title: '运行中任务',
       value: runningCount,
-      helper: runningCount ? '包含待处理 / 上传中 / 排队中 / 执行中' : '当前没有运行中任务',
+      helper: runningCount
+        ? '包含待处理 / 上传中 / 检测中 / 排队中 / 执行中'
+        : '当前没有运行中任务',
     },
     {
       key: 'failed',
@@ -157,6 +158,7 @@ const taskSummaryCards = computed(() => {
 
 const detailStatusOptions = [
   { label: '全部明细', value: null },
+  { label: '检测通过', value: 'validated' },
   { label: '成功', value: 'success' },
   { label: '失败', value: 'failed' },
   { label: '跳过', value: 'skipped' },
@@ -180,17 +182,29 @@ const detailOverviewCards = computed(() => {
     {
       key: 'total',
       label: '模板总行数',
-      value: resultSummary.total_count ?? currentTask.value.total_count ?? 0,
+      value:
+        resultSummary.validation_total_rows ??
+        resultSummary.total_count ??
+        currentTask.value.total_count ??
+        0,
     },
     {
       key: 'valid',
-      label: '预校验通过',
-      value: resultSummary.valid_rows ?? currentTask.value.success_count ?? 0,
+      label: '检测通过',
+      value:
+        resultSummary.validation_passed_rows ??
+        resultSummary.valid_rows ??
+        currentTask.value.success_count ??
+        0,
     },
     {
       key: 'invalid',
-      label: '预校验失败',
-      value: resultSummary.invalid_rows ?? currentTask.value.failed_count ?? 0,
+      label: '检测失败',
+      value:
+        resultSummary.validation_failed_rows ??
+        resultSummary.invalid_rows ??
+        currentTask.value.failed_count ??
+        0,
     },
     {
       key: 'processed',
@@ -251,7 +265,8 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 280,
+    align: 'center',
+    width: 180,
     render(row) {
       const actions = [
         h(
@@ -281,28 +296,28 @@ const columns = computed(() => [
           )
         )
       }
-      if (canAccess('post/api/v1/product/import/task/retry-failed')) {
-        actions.push(
-          h(
-            NPopconfirm,
-            { onPositiveClick: () => handleRetryFailed(row) },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  {
-                    size: 'tiny',
-                    quaternary: true,
-                    type: 'warning',
-                    disabled: !canRetryFailedRows(row),
-                  },
-                  { default: () => '失败项重试' }
-                ),
-              default: () => '确认仅重试当前任务的失败项吗？',
-            }
-          )
-        )
-      }
+      // if (canAccess('post/api/v1/product/import/task/retry-failed')) {
+      //   actions.push(
+      //     h(
+      //       NPopconfirm,
+      //       { onPositiveClick: () => handleRetryFailed(row) },
+      //       {
+      //         trigger: () =>
+      //           h(
+      //             NButton,
+      //             {
+      //               size: 'tiny',
+      //               quaternary: true,
+      //               type: 'warning',
+      //               disabled: !canRetryFailedRows(row),
+      //             },
+      //             { default: () => '失败项重试' }
+      //           ),
+      //         default: () => '确认仅重试当前任务的失败项吗？',
+      //       }
+      //     )
+      //   )
+      // }
       if (canAccess('post/api/v1/product/import/task/cancel')) {
         actions.push(
           h(
@@ -325,11 +340,7 @@ const columns = computed(() => [
           )
         )
       }
-      return h(
-        'div',
-        { style: 'display:flex;justify-content:center;gap:8px;flex-wrap:wrap;' },
-        actions
-      )
+      return h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;' }, actions)
     },
   },
 ])
@@ -402,24 +413,6 @@ function handleTaskDataChange(data) {
 function closeDetail() {
   detailVisible.value = false
   syncPollingState()
-}
-
-async function handleRetry(row) {
-  await api.retryProductImportTask({ task_id: row.id })
-  $message.success('任务已重新入队')
-  if (currentTask.value?.id === row.id) {
-    closeDetail()
-  }
-  $table.value?.handleSearch()
-}
-
-async function handleRetryFailed(row) {
-  await api.retryFailedProductImportTask({ task_id: row.id })
-  $message.success('失败项已重新入队')
-  if (currentTask.value?.id === row.id) {
-    closeDetail()
-  }
-  await $table.value?.handleSearch()
 }
 
 async function handleCancel(row) {
@@ -646,7 +639,7 @@ onBeforeUnmount(() => {
               >
                 下载错误报告
               </NButton>
-              <NButton
+              <!-- <NButton
                 v-if="canAccess('post/api/v1/product/import/task/retry-failed')"
                 type="warning"
                 secondary
@@ -662,7 +655,7 @@ onBeforeUnmount(() => {
                 @click="handleRetry(currentTask)"
               >
                 整任务重试
-              </NButton>
+              </NButton> -->
             </NSpace>
             <div class="detail-toolbar-text">
               共 {{ detailPagination.total }} 条明细，当前第 {{ detailPagination.page }} 页

@@ -35,6 +35,7 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         query = self.model.filter(
             status__in=[
                 ProductImportTaskStatus.UPLOADING,
+                ProductImportTaskStatus.VALIDATING,
                 ProductImportTaskStatus.QUEUED,
                 ProductImportTaskStatus.RUNNING,
             ]
@@ -52,6 +53,18 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
             obj_in={
                 "status": ProductImportTaskStatus.RUNNING,
                 "started_at": datetime.now(),
+            },
+        )
+
+    async def mark_validating(self, task_id: int) -> ProductImportTask:
+        task = await self.get(id=task_id)
+        if task.status == ProductImportTaskStatus.CANCELED:
+            return task
+        return await self.update(
+            id=task_id,
+            obj_in={
+                "status": ProductImportTaskStatus.VALIDATING,
+                "error_message": None,
             },
         )
 
@@ -171,6 +184,16 @@ class ProductImportTaskItemController(CRUDBase[ProductImportTaskItem, dict, dict
                 "status": ProductImportTaskItemStatus.SUCCESS,
                 "message": message,
                 "product_id": product_id,
+            },
+        )
+
+    async def mark_validated(self, item_id: int, *, message: str | None = None):
+        return await self.update(
+            id=item_id,
+            obj_in={
+                "status": ProductImportTaskItemStatus.VALIDATED,
+                "message": message,
+                "product_id": None,
             },
         )
 

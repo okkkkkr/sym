@@ -22,6 +22,8 @@ class MethodType(StrEnum):
 class ProductImportTaskStatus(StrEnum):
     PENDING = "pending"
     UPLOADING = "uploading"
+    VALIDATING = "validating"
+    VALIDATION_FAILED = "validation_failed"
     QUEUED = "queued"
     RUNNING = "running"
     SUCCESS = "success"
@@ -32,6 +34,7 @@ class ProductImportTaskStatus(StrEnum):
 
 class ProductImportTaskItemStatus(StrEnum):
     PENDING = "pending"
+    VALIDATED = "validated"
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"

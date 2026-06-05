@@ -22,7 +22,12 @@ from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
 from app.services import artifact_storage_service, product_import_upload_service
 from app.settings import settings
-from app.tasks.product_import import run_product_import, run_product_import_task
+from app.tasks.product_import import (
+    run_product_import,
+    run_product_import_task,
+    run_product_import_validation,
+    run_product_import_validation_task,
+)
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter(prefix="/import")
@@ -94,6 +99,16 @@ def is_celery_broker_reachable(timeout: float = 0.3) -> bool:
             return True
     except OSError:
         return False
+
+
+def dispatch_product_import_validation_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
+    try:
+        if not is_celery_broker_reachable():
+            raise ConnectionError(f"celery broker unreachable: {settings.CELERY_BROKER_URL}")
+        run_product_import_validation_task.apply_async(args=[task_id, retry_row_nos], retry=False)
+    except Exception as exc:
+        logger.warning("dispatch product import validation task via celery failed, fallback to local async run: {}", exc)
+        asyncio.create_task(run_product_import_validation(task_id, retry_row_nos=retry_row_nos))
 
 
 def dispatch_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
@@ -257,7 +272,7 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
             id=task_id,
             obj_in={
                 "storage_key": storage_key,
-                "status": ProductImportTaskStatus.QUEUED,
+                "status": ProductImportTaskStatus.VALIDATING,
             },
         )
     except Exception as exc:
@@ -272,12 +287,12 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
         raise
     finally:
         await product_import_upload_service.cleanup_upload(payload.upload_id)
-    dispatch_product_import_task(task_id)
+    dispatch_product_import_validation_task(task_id)
     return Success(
         data={
             "task_id": task_id,
             "storage_key": storage_key,
-            "status": ProductImportTaskStatus.QUEUED,
+            "status": ProductImportTaskStatus.VALIDATING,
         }
     )
 
@@ -321,15 +336,19 @@ async def build_task_detail_summary(task_id: int) -> dict:
     error_counter: Counter[str] = Counter()
     status_order = {
         ProductImportTaskItemStatus.PENDING.value: 0,
-        ProductImportTaskItemStatus.SUCCESS.value: 1,
-        ProductImportTaskItemStatus.FAILED.value: 2,
-        ProductImportTaskItemStatus.SKIPPED.value: 3,
+        ProductImportTaskItemStatus.VALIDATED.value: 1,
+        ProductImportTaskItemStatus.SUCCESS.value: 2,
+        ProductImportTaskItemStatus.FAILED.value: 3,
+        ProductImportTaskItemStatus.SKIPPED.value: 4,
     }
 
     for item in items:
         status = item.status.value if hasattr(item.status, "value") else str(item.status)
         status_counter[status] += 1
-        if status == ProductImportTaskItemStatus.SUCCESS.value or not item.message:
+        if status in {
+            ProductImportTaskItemStatus.SUCCESS.value,
+            ProductImportTaskItemStatus.VALIDATED.value,
+        } or not item.message:
             continue
         for message_part in [part.strip() for part in str(item.message).split(";") if part.strip()]:
             error_counter[message_part] += 1
@@ -408,6 +427,7 @@ async def cancel_product_import_task(payload: ProductImportTaskActionIn, current
     if task.status not in {
         ProductImportTaskStatus.PENDING,
         ProductImportTaskStatus.UPLOADING,
+        ProductImportTaskStatus.VALIDATING,
         ProductImportTaskStatus.QUEUED,
         ProductImportTaskStatus.RUNNING,
     }:
@@ -422,6 +442,7 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
     if not current_user.is_superuser and task.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
     if task.status not in {
+        ProductImportTaskStatus.VALIDATION_FAILED,
         ProductImportTaskStatus.FAILED,
         ProductImportTaskStatus.WARN,
         ProductImportTaskStatus.CANCELED,
@@ -436,7 +457,7 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
     await product_import_task_controller.update(
         id=payload.task_id,
         obj_in={
-            "status": ProductImportTaskStatus.QUEUED,
+            "status": ProductImportTaskStatus.VALIDATING,
             "processed_count": 0,
             "success_count": 0,
             "failed_count": 0,
@@ -448,8 +469,8 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
             "finished_at": None,
         },
     )
-    dispatch_product_import_task(payload.task_id)
-    return Success(msg="任务已重新加入队列")
+    dispatch_product_import_validation_task(payload.task_id)
+    return Success(msg="任务已重新进入合法性检测")
 
 
 @router.post("/task/retry-failed", summary="仅重试好物导入失败项")
@@ -481,7 +502,7 @@ async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, c
         storage_key=task.storage_key,
         created_by=current_user.id,
         import_strategy=task.import_strategy,
-        status=ProductImportTaskStatus.QUEUED,
+        status=ProductImportTaskStatus.VALIDATING,
     )
     await product_import_task_controller.update(
         id=retry_task.id,
@@ -493,9 +514,9 @@ async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, c
             },
         },
     )
-    dispatch_product_import_task(retry_task.id, retry_row_nos=retry_row_nos)
+    dispatch_product_import_validation_task(retry_task.id, retry_row_nos=retry_row_nos)
     return Success(
-        msg="失败项已重新加入队列",
+        msg="失败项已重新进入合法性检测",
         data={"task_id": retry_task.id, "retry_row_count": len(retry_row_nos)},
     )
 
