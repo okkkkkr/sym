@@ -79,9 +79,9 @@ export async function fetchCatalogProduct(productId) {
   return payload.data || {}
 }
 
-const VISITOR_ID_STORAGE_KEY = 'sym-fast:visitor-id'
-const VISIT_TS_STORAGE_KEY = 'sym-fast:last-visit-track-at'
-const CHANNEL_VISIT_TS_STORAGE_KEY_PREFIX = 'sym-fast:last-channel-visit-track-at:'
+const VISITOR_ID_STORAGE_KEY = 'sym:visitor-id'
+const VISIT_TS_STORAGE_KEY = 'sym:last-visit-track-at'
+const CHANNEL_VISIT_TS_STORAGE_KEY_PREFIX = 'sym:last-channel-visit-track-at:'
 const VISIT_THROTTLE_MS = 30 * 60 * 1000
 
 function createVisitorId() {

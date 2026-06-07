@@ -1,7 +1,17 @@
 <template>
   <n-dropdown :options="options" @select="handleSelect">
     <div flex cursor-pointer items-center>
-      <img :src="userStore.avatar" mr10 h-35 w-35 rounded-full />
+      <n-avatar
+        :style="{
+          color: 'yellow',
+          backgroundColor: 'red',
+          marginRight: '8px',
+        }"
+        size="small"
+        round
+      >
+        {{ userStore.name.substr(0, 1).toUpperCase() }}
+      </n-avatar>
       <span>{{ userStore.name }}</span>
     </div>
   </n-dropdown>

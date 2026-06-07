@@ -1,6 +1,6 @@
 import { getOrCreateVisitorId } from './catalog'
 
-const CONTACT_CLICK_TS_STORAGE_KEY_PREFIX = 'sym-fast:last-contact-click-track-at:'
+const CONTACT_CLICK_TS_STORAGE_KEY_PREFIX = 'sym:last-contact-click-track-at:'
 const CONTACT_CLICK_WINDOW_MS = 30 * 60 * 1000
 
 export async function fetchActiveContacts(contactType = '') {

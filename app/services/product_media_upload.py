@@ -210,8 +210,6 @@ class ProductMediaUploadService:
 
     def build_access_url(self, object_key: str, expires_in: int | None = None) -> str:
         self._validate_settings()
-        if self.is_private_bucket():
-            return self.build_private_url(object_key, expires_in=expires_in)
         return self.build_public_url(object_key)
 
     def extract_object_key(self, stored_value: str | None) -> str | None:

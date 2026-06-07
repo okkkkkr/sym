@@ -42,7 +42,7 @@ const logoImage = computed(() => siteConfig.value.logo_url);
 const shareButtonTitle = ref("复制当前链接");
 
 let mediaQuery;
-const PLATFORM_STORAGE_KEY = "sym-fast:platform";
+const PLATFORM_STORAGE_KEY = "sym:platform";
 
 const contactIconMap = {
   facebook: markRaw(FacebookOutlined),

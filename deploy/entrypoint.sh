@@ -2,4 +2,4 @@
 set -e
 
 nginx
-python /opt/vue-fastapi-admin/run.py
+python /opt/sym/run.py

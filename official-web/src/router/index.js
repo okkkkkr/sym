@@ -5,7 +5,7 @@ import Home from '../pages/home.vue'
 import Product from '../pages/product.vue'
 import ProductDetail from '../pages/product/detail.vue'
 
-const PLATFORM_STORAGE_KEY = 'sym-fast:platform'
+const PLATFORM_STORAGE_KEY = 'sym:platform'
 
 function persistPlatform(query = {}) {
   if (typeof window === 'undefined') {

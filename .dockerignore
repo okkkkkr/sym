@@ -7,7 +7,7 @@ db.sqlite3-shm
 db.sqlite3-wal
 web/node_modules
 web/dist
-frontend/node_modules
-frontend/dist
-frontend/.vscode
-frontend/.DS_Store
+official-web/node_modules
+official-web/dist
+official-web/.vscode
+official-web/.DS_Store

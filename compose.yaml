@@ -1,32 +1,29 @@
 services:
-  sym-fast:
+  sym-web:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sym-fast-integration:local
-    container_name: sym-fast
+    image: sym:local
+    container_name: sym-web
     env_file:
       - .env
     ports:
       - "8080:80"
     restart: unless-stopped
     depends_on:
-      - redis
+      - sym-redis
 
   sym-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: sym-fast-integration:local
+    image: sym:local
     container_name: sym-worker
     env_file:
       - .env
     command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO"]
     restart: unless-stopped
     depends_on:
-      - redis
+      - sym-redis
 
-  redis:
+  sym-redis:
     image: redis:7-alpine
     container_name: sym-redis
     restart: unless-stopped

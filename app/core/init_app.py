@@ -246,7 +246,7 @@ async def init_menus():
         path="/site",
         order=3,
         parent_id=0,
-        icon="material-symbols:web-traffic",
+        icon="material-symbols:captive-portal",
         is_hidden=False,
         component="Layout",
         keepalive=False,
