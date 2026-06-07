@@ -7,21 +7,55 @@ services:
     container_name: sym-web
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: sym-postgres
+      REDIS_URL: redis://sym-redis:6379/0
+      CELERY_BROKER_URL: redis://sym-redis:6379/0
+      CELERY_RESULT_BACKEND: redis://sym-redis:6379/1
     ports:
       - "8080:80"
     restart: unless-stopped
     depends_on:
-      - sym-redis
+      sym-postgres:
+        condition: service_healthy
+      sym-redis:
+        condition: service_started
 
   sym-worker:
     image: sym:local
     container_name: sym-worker
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: sym-postgres
+      REDIS_URL: redis://sym-redis:6379/0
+      CELERY_BROKER_URL: redis://sym-redis:6379/0
+      CELERY_RESULT_BACKEND: redis://sym-redis:6379/1
     command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO"]
     restart: unless-stopped
     depends_on:
-      - sym-redis
+      sym-postgres:
+        condition: service_healthy
+      sym-redis:
+        condition: service_started
+
+  sym-postgres:
+    image: postgres:16-alpine
+    container_name: sym-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - sym-postgres-data:/var/lib/postgresql/data
 
   sym-redis:
     image: redis:7-alpine
@@ -29,3 +63,7 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+
+volumes:
+  sym-postgres-data:
+    name: sym-postgres-data

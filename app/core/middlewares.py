@@ -89,7 +89,7 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
 
-        return args
+        return self.sanitize_log_value(args)
 
     async def get_response_body(self, request: Request, response: Response) -> Any:
         # 检查Content-Length
@@ -118,11 +118,11 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                     if "data" in data and isinstance(data["data"], list):
                         for item in data["data"]:
                             item.pop("response_body", None)
-                return data
+                return self.sanitize_log_value(data)
             except Exception:
                 return None
 
-        return self.lenient_json(body)
+        return self.sanitize_log_value(self.lenient_json(body))
 
     def lenient_json(self, v: Any) -> Any:
         if isinstance(v, (str, bytes)):
@@ -132,6 +132,19 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                 text = v.decode("utf-8", errors="ignore") if isinstance(v, bytes) else str(v)
                 return {"raw": text[: self.max_body_size]}
         return v
+
+    def sanitize_log_value(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {self.sanitize_log_value(key): self.sanitize_log_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self.sanitize_log_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self.sanitize_log_value(item) for item in value)
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="ignore").replace("\x00", "")
+        if isinstance(value, str):
+            return value.replace("\x00", "")
+        return value
 
     async def _async_iter(self, items: list[bytes]) -> AsyncGenerator[bytes, None]:
         for item in items:

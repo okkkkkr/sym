@@ -1,7 +1,7 @@
 from typing import Any, Dict, Generic, List, NewType, Tuple, Type, TypeVar, Union
 
 from pydantic import BaseModel
-from tortoise.expressions import Case, Q, When
+from tortoise.expressions import Q, RawSQL
 from tortoise.models import Model
 
 Total = NewType("Total", int)
@@ -30,8 +30,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         fallback_order = [item for item in default_order if item.lstrip("-") != sort_field]
         return [requested_order, *fallback_order]
 
-    @staticmethod
     def build_nullable_field_order(
+        self,
         field_name: str,
         fallback_order: list[str],
         sort_order: str | None = None,
@@ -39,6 +39,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         normalized_sort_order = str(sort_order or "asc").lower()
         prefix = "" if normalized_sort_order == "asc" else "-"
         annotation_name = f"__{field_name}_null_rank"
+        table_name = self.model._meta.db_table
         filtered_fallback_order = [
             item
             for item in fallback_order
@@ -46,10 +47,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         ]
         return (
             {
-                annotation_name: Case(
-                    When(**{f"{field_name}__isnull": True}, then=1),
-                    default=0,
-                )
+                annotation_name: RawSQL(f'CASE WHEN "{table_name}"."{field_name}" IS NULL THEN 1 ELSE 0 END')
             },
             [annotation_name, f"{prefix}{field_name}", *filtered_fallback_order],
         )

@@ -188,7 +188,7 @@ class ChannelVisitDedup(BaseModel):
 class Category(BaseModel, TimestampMixin):
     name = fields.CharField(max_length=50, unique=True, description="类目名称", index=True)
     desc = fields.CharField(max_length=255, null=True, description="类目描述")
-    order = fields.IntField(default=0, description="排序", index=True)
+    order = fields.IntField(null=True, description="排序", index=True)
     is_active = fields.BooleanField(default=True, description="是否启用", index=True)
     hot_tags = fields.ManyToManyField("models.Tag", related_name="hot_categories", through="category_hot_tag")
 

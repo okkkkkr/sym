@@ -34,6 +34,18 @@ async def ensure_tortoise_initialized() -> None:
         await Tortoise.init(config=settings.TORTOISE_ORM)
 
 
+async def run_in_isolated_tortoise_context(coro):
+    if Tortoise._inited:
+        await Tortoise.close_connections()
+        Tortoise._inited = False
+    await Tortoise.init(config=settings.TORTOISE_ORM)
+    try:
+        return await coro
+    finally:
+        await Tortoise.close_connections()
+        Tortoise._inited = False
+
+
 SAFE_OBJECT_KEY_PART_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -653,14 +665,14 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
 
 @celery_app.task(name="product_import.validate")
 def run_product_import_validation_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
-    asyncio.run(run_product_import_validation(task_id, retry_row_nos=retry_row_nos))
+    asyncio.run(run_in_isolated_tortoise_context(run_product_import_validation(task_id, retry_row_nos=retry_row_nos)))
 
 
 @celery_app.task(name="product_import.run")
 def run_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
-    asyncio.run(run_product_import(task_id, retry_row_nos=retry_row_nos))
+    asyncio.run(run_in_isolated_tortoise_context(run_product_import(task_id, retry_row_nos=retry_row_nos)))
 
 
 @celery_app.task(name="product_import.cleanup_temp_files")
 def cleanup_product_import_temp_files_task() -> dict:
-    return asyncio.run(cleanup_product_import_temp_files())
+    return asyncio.run(run_in_isolated_tortoise_context(cleanup_product_import_temp_files()))

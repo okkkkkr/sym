@@ -92,15 +92,23 @@ test: ## Run the test suite
 	$(eval export $(sh sed 's/=.*//' .env))
 	pytest -vv -s --cache-clear ./
 
+.PHONY: db-up
+db-up: ## 启动本地Postgres和Redis
+	docker compose up -d sym-postgres sym-redis
+
+.PHONY: db-down
+db-down: ## 停止本地Postgres和Redis
+	docker compose stop sym-postgres sym-redis
+
 .PHONY: clean-db
-clean-db: ## 删除migrations文件夹和db.sqlite3
-	find . -type d -name "migrations" -exec rm -rf {} +
-	rm -f db.sqlite3 db.sqlite3-shm db.sqlite3-wal
+clean-db: ## 删除本地Postgres数据卷
+	docker compose down
+	docker volume rm sym-postgres-data || true
 
 .PHONY: migrate
-migrate: ## 运行aerich migrate命令生成迁移文件
+migrate: ## 基于Postgres运行aerich migrate命令生成迁移文件
 	aerich migrate
 
 .PHONY: upgrade
-upgrade: ## 运行aerich upgrade命令应用迁移
+upgrade: ## 基于Postgres运行aerich upgrade命令应用迁移
 	aerich upgrade
