@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     CORS_ALLOW_HEADERS: typing.List = ["*"]
 
     DEBUG: bool = True
+    APP_HOST: str = "0.0.0.0"
+    APP_PORT: int = 9999
 
     @field_validator("DEBUG", mode="before")
     @classmethod

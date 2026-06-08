@@ -1,0 +1,16 @@
+[Unit]
+Description=SYM FastAPI API
+After=network.target
+
+[Service]
+Type=simple
+User=sym
+Group=sym
+WorkingDirectory=/opt/sym
+EnvironmentFile=/opt/sym/.env
+ExecStart=/opt/sym/.venv/bin/python /opt/sym/run.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=SYM Celery Beat
+After=network.target
+
+[Service]
+Type=simple
+User=sym
+Group=sym
+WorkingDirectory=/opt/sym
+EnvironmentFile=/opt/sym/.env
+ExecStart=/opt/sym/.venv/bin/celery -A app.core.celery_app.celery_app beat --loglevel=INFO --pidfile=/opt/sym/tmp/celerybeat.pid --schedule=/opt/sym/tmp/celerybeat-schedule
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

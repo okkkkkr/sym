@@ -1,0 +1,16 @@
+[Unit]
+Description=SYM Celery Worker
+After=network.target
+
+[Service]
+Type=simple
+User=sym
+Group=sym
+WorkingDirectory=/opt/sym
+EnvironmentFile=/opt/sym/.env
+ExecStart=/opt/sym/.venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=INFO
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
