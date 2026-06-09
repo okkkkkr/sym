@@ -35,8 +35,7 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         query = self.model.filter(
             status__in=[
                 ProductImportTaskStatus.UPLOADING,
-                ProductImportTaskStatus.VALIDATING,
-                ProductImportTaskStatus.QUEUED,
+                ProductImportTaskStatus.PENDING,
                 ProductImportTaskStatus.RUNNING,
             ]
         )

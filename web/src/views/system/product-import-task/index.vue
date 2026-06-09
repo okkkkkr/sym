@@ -37,16 +37,13 @@ const detailLoading = ref(false)
 const detailStatus = ref(null)
 const detailPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const pollingTimer = ref(null)
-const activeTaskStatuses = ['pending', 'uploading', 'validating', 'queued', 'running']
-const finalTaskStatuses = ['validation_failed', 'success', 'warn', 'failed', 'canceled']
+const activeTaskStatuses = ['pending', 'uploading', 'running']
+const finalTaskStatuses = ['success', 'warn', 'failed', 'canceled']
 
 const statusOptions = [
   { label: '全部状态', value: null },
   { label: '待处理', value: 'pending' },
   { label: '上传中', value: 'uploading' },
-  { label: '检测中', value: 'validating' },
-  { label: '检测失败', value: 'validation_failed' },
-  { label: '排队中', value: 'queued' },
   { label: '同步中', value: 'running' },
   { label: '成功', value: 'success' },
   { label: '警告', value: 'warn' },
@@ -65,8 +62,8 @@ function canAccess(permission) {
 
 function statusTagType(status) {
   if (status === 'success') return 'success'
-  if (status === 'warn' || status === 'running' || status === 'validating') return 'warning'
-  if (status === 'failed' || status === 'validation_failed') return 'error'
+  if (status === 'warn' || status === 'running' || status === 'pending') return 'warning'
+  if (status === 'failed') return 'error'
   return 'info'
 }
 
@@ -100,9 +97,7 @@ function canDownloadErrorReport(row) {
 
 function taskPhaseDescription(status) {
   if (status === 'uploading') return '正在接收 ZIP 分片'
-  if (status === 'validating') return '正在执行合法性检测'
-  if (status === 'validation_failed') return '合法性检测未通过，未开始同步'
-  if (status === 'queued') return '合法性检测通过，等待后台同步'
+  if (status === 'pending') return '等待后台开始导入'
   if (status === 'running') return '正在解析 ZIP、上传素材到七牛并写入数据库'
   if (status === 'success') return '导入已完成'
   if (status === 'warn') return '导入已完成，存在部分失败项'
@@ -115,11 +110,9 @@ const taskSummaryCards = computed(() => {
   const tasks = tableData.value || []
   const total = tasks.length
   const runningCount = tasks.filter((item) => activeTaskStatuses.includes(item.status)).length
-  const failedCount = tasks.filter((item) =>
-    ['validation_failed', 'warn', 'failed'].includes(item.status)
-  ).length
+  const failedCount = tasks.filter((item) => ['warn', 'failed'].includes(item.status)).length
   const latestFinished = tasks.find((item) =>
-    ['validation_failed', 'success', 'warn', 'failed', 'canceled'].includes(item.status)
+    ['success', 'warn', 'failed', 'canceled'].includes(item.status)
   )
 
   return [
@@ -133,9 +126,7 @@ const taskSummaryCards = computed(() => {
       key: 'running',
       title: '运行中任务',
       value: runningCount,
-      helper: runningCount
-        ? '包含待处理 / 上传中 / 检测中 / 排队中 / 执行中'
-        : '当前没有运行中任务',
+      helper: runningCount ? '包含待处理 / 上传中 / 执行中' : '当前没有运行中任务',
     },
     {
       key: 'failed',
@@ -158,7 +149,6 @@ const taskSummaryCards = computed(() => {
 
 const detailStatusOptions = [
   { label: '全部明细', value: null },
-  { label: '检测通过', value: 'validated' },
   { label: '成功', value: 'success' },
   { label: '失败', value: 'failed' },
   { label: '跳过', value: 'skipped' },
@@ -190,7 +180,7 @@ const detailOverviewCards = computed(() => {
     },
     {
       key: 'valid',
-      label: '检测通过',
+      label: '成功行数',
       value:
         resultSummary.validation_passed_rows ??
         resultSummary.valid_rows ??
@@ -199,7 +189,7 @@ const detailOverviewCards = computed(() => {
     },
     {
       key: 'invalid',
-      label: '检测失败',
+      label: '失败行数',
       value:
         resultSummary.validation_failed_rows ??
         resultSummary.invalid_rows ??

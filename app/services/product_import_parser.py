@@ -1,11 +1,9 @@
 import json
 import re
-import unicodedata
 
 from fastapi import HTTPException
 from openpyxl import load_workbook
 
-from app.models.admin import Brand, Category, Product, Tag
 from app.schemas.product_import import ProductImportParseResult, ProductImportParsedRow
 from app.schemas.sortable import parse_import_rank_value
 
@@ -69,48 +67,20 @@ class ProductImportParserService:
                 missing_labels = [self.DISPLAY_HEADERS.get(header, header) for header in missing_headers]
                 raise HTTPException(status_code=400, detail=f"缺少必填表头: {', '.join(missing_labels)}")
 
-            categories = {item.name: item.id for item in await Category.all()}
-            tags = {item.name: item.id for item in await Tag.all()}
-            brands = await Brand.all().prefetch_related("categories")
-            brand_map = {brand.name: brand for brand in brands}
-            existing_products = {
-                self._normalize_name(name)
-                for name in await Product.all().values_list("name", flat=True)
-                if self._normalize_name(name)
-            }
-
             parsed_rows: list[ProductImportParsedRow] = []
-            valid_rows = 0
-            invalid_rows = 0
 
             for row_no, values in enumerate(rows[1:], start=2):
                 if self._is_empty_row(values):
                     continue
 
-                row = self._build_row(row_no=row_no, values=values, header_index=header_index)
-                self._validate_row(
-                    row,
-                    categories=categories,
-                    brand_map=brand_map,
-                    tags=tags,
-                    existing_products=existing_products,
-                )
-                if row.errors:
-                    invalid_rows += 1
-                else:
-                    valid_rows += 1
-                parsed_rows.append(row)
-
-            self._validate_material_dirs(parsed_rows)
-            valid_rows = sum(1 for row in parsed_rows if not row.errors)
-            invalid_rows = len(parsed_rows) - valid_rows
+                parsed_rows.append(self._build_row(row_no=row_no, values=values, header_index=header_index))
 
             return ProductImportParseResult(
                 headers=headers,
                 rows=parsed_rows,
                 total_rows=len(parsed_rows),
-                valid_rows=valid_rows,
-                invalid_rows=invalid_rows,
+                valid_rows=len(parsed_rows),
+                invalid_rows=0,
             )
         finally:
             workbook.close()
@@ -147,68 +117,6 @@ class ProductImportParserService:
         if detail_error:
             row.errors.append(detail_error)
         return row
-
-    def _validate_row(
-        self,
-        row: ProductImportParsedRow,
-        *,
-        categories: dict[str, int],
-        brand_map: dict[str, Brand],
-        tags: dict[str, int],
-        existing_products: set[str],
-    ) -> None:
-        if not row.name:
-            row.errors.append("名称不能为空")
-        if not row.material_dir:
-            row.errors.append("素材目录不能为空")
-        if not row.category_name:
-            row.errors.append("所属分类不能为空")
-        if not row.brand_name:
-            row.errors.append("所属品牌不能为空")
-
-        category_id = categories.get(row.category_name)
-        if row.category_name and category_id is None:
-            row.errors.append("所属分类不存在")
-        row.category_id = category_id
-
-        brand = brand_map.get(row.brand_name)
-        if row.brand_name and brand is None:
-            row.errors.append("所属品牌不存在")
-        if brand is not None:
-            row.brand_id = brand.id
-            category_ids = {category.id for category in brand.categories}
-            if category_id is not None and category_id not in category_ids:
-                row.errors.append("所属品牌不属于所选分类")
-
-        resolved_tag_ids: list[int] = []
-        missing_tags: list[str] = []
-        for tag_name in row.tag_names:
-            tag_id = tags.get(tag_name)
-            if tag_id is None:
-                missing_tags.append(tag_name)
-                continue
-            resolved_tag_ids.append(tag_id)
-        if missing_tags:
-            row.errors.append(f"以下标签不存在: {', '.join(missing_tags)}")
-        row.tag_ids = list(dict.fromkeys(resolved_tag_ids))
-
-        normalized_name = self._normalize_name(row.name)
-        if normalized_name and normalized_name in existing_products:
-            row.duplicate_hint = True
-            row.warnings.append("检测到同名好物")
-
-    def _validate_material_dirs(self, rows: list[ProductImportParsedRow]) -> None:
-        material_dir_count: dict[str, int] = {}
-        for row in rows:
-            normalized_dir = self._normalize_name(row.material_dir)
-            if not normalized_dir:
-                continue
-            material_dir_count[normalized_dir] = material_dir_count.get(normalized_dir, 0) + 1
-
-        for row in rows:
-            normalized_dir = self._normalize_name(row.material_dir)
-            if normalized_dir and material_dir_count.get(normalized_dir, 0) > 1:
-                row.errors.append("素材目录重复，请为每条好物指定唯一素材目录")
 
     @staticmethod
     def _normalize_cell_value(value) -> str:
@@ -276,10 +184,5 @@ class ProductImportParserService:
             return []
         parts = re.split(r"[;；\n]+", value)
         return list(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
-
-    @staticmethod
-    def _normalize_name(value: str) -> str:
-        return unicodedata.normalize("NFKC", str(value or "").strip())
-
 
 product_import_parser_service = ProductImportParserService()

@@ -94,16 +94,16 @@ test: ## Run the test suite
 
 .PHONY: db-up
 db-up: ## 启动本地Postgres和Redis
-	docker compose up -d sym-postgres sym-redis
+	docker compose up -d postgres redis
 
 .PHONY: db-down
 db-down: ## 停止本地Postgres和Redis
-	docker compose stop sym-postgres sym-redis
+	docker compose stop postgres redis
 
 .PHONY: clean-db
 clean-db: ## 删除本地Postgres数据卷
 	docker compose down
-	docker volume rm sym-postgres-data || true
+	docker volume rm sym_postgres_data sym-postgres-data || true
 
 .PHONY: migrate
 migrate: ## 基于Postgres运行aerich migrate命令生成迁移文件

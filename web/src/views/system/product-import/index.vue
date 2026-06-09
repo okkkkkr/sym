@@ -26,7 +26,7 @@ const pollingTimer = ref(null)
 const chunkSize = 5 * 1024 * 1024
 const maxFileSize = 2 * 1024 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
-const activeTaskStatuses = ['uploading', 'validating', 'queued', 'running']
+const activeTaskStatuses = ['uploading', 'pending', 'running']
 
 const selectedFileLabel = computed(() => {
   if (!selectedFile.value) return '未选择文件'
@@ -84,9 +84,7 @@ function formatRemainingTime(seconds) {
 
 function taskStatusLabel(status) {
   if (status === 'uploading') return '上传中'
-  if (status === 'validating') return '检测中'
-  if (status === 'validation_failed') return '检测失败'
-  if (status === 'queued') return '排队中'
+  if (status === 'pending') return '待导入'
   if (status === 'running') return '同步中'
   if (status === 'success') return '成功'
   if (status === 'warn') return '警告'
@@ -97,16 +95,14 @@ function taskStatusLabel(status) {
 
 function taskStatusType(status) {
   if (status === 'success') return 'success'
-  if (status === 'warn' || status === 'running' || status === 'validating') return 'warning'
-  if (status === 'failed' || status === 'validation_failed') return 'error'
+  if (status === 'warn' || status === 'running' || status === 'pending') return 'warning'
+  if (status === 'failed') return 'error'
   return 'info'
 }
 
 function taskStatusDescription(status) {
-  if (status === 'uploading') return '正在接收 ZIP 分片，上传完成后会自动进入合法性检测。'
-  if (status === 'validating') return 'ZIP 已接收完成，正在校验表格内容与素材目录。'
-  if (status === 'validation_failed') return '合法性检测未通过，任务已停止，请查看错误明细。'
-  if (status === 'queued') return '合法性检测通过，正在等待后台同步。'
+  if (status === 'uploading') return '正在接收 ZIP 分片，上传完成后会自动进入导入队列。'
+  if (status === 'pending') return 'ZIP 已接收完成，等待后台开始导入。'
   if (status === 'running') return '正在解析 ZIP、上传素材并写入数据库。'
   if (status === 'success') return '导入已完成。'
   if (status === 'warn') return '导入已完成，存在部分失败项。'
@@ -345,11 +341,11 @@ async function startUpload() {
     activeUploadSession.value = null
     selectedFile.value = null
     updateUploadProgress(0, 0)
-    uploadStatusText.value = 'ZIP 上传成功，正在执行合法性检测'
+    uploadStatusText.value = 'ZIP 上传成功，已进入导入队列'
     uploadSpeedText.value = ''
     uploadEtaText.value = ''
     await refreshActiveTask()
-    $message.success('ZIP 上传成功，正在执行合法性检测')
+    $message.success('ZIP 上传成功，已进入导入队列')
   } catch (error) {
     uploadAbortController.value = null
     if (error.code === 'ERR_CANCELED' && pauseRequested.value) {
