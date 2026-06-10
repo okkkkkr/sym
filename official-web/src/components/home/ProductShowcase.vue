@@ -123,24 +123,24 @@ const gridStyle = computed(() => ({
 }))
 
 const cardStyle = computed(() => {
-  if (isMobileLayout.value) {
-    const width = Math.max(0, (availableWidth.value - columnGap.value) / 2)
-    return {
-      flexBasis: `${width}px`,
-      minWidth: `${width}px`,
-      width: `${width}px`,
-      maxWidth: `${width}px`,
-    }
-  }
+  // if (isMobileLayout.value) {
+  //   const width = Math.max(0, (availableWidth.value - columnGap.value) / 2)
+  //   return {
+  //     flexBasis: `${width}px`,
+  //     minWidth: `${width}px`,
+  //     width: `${width}px`,
+  //     maxWidth: `${width}px`,
+  //   }
+  // }
 
-  if (isSingleColumn.value && shouldUseFluidCard.value) {
-    return {
-      flexBasis: '100%',
-      minWidth: '100%',
-      width: '100%',
-      maxWidth: '100%',
-    }
-  }
+  // if (isSingleColumn.value && shouldUseFluidCard.value) {
+  //   return {
+  //     flexBasis: '100%',
+  //     minWidth: '100%',
+  //     width: '100%',
+  //     maxWidth: '100%',
+  //   }
+  // }
 
   return {
     flexBasis: `${CARD_WIDTH}px`,
@@ -291,15 +291,12 @@ function productLink(product) {
   flex: 0 0 144px;
   height: 144px;
   background: #f0efeb;
-  padding: 14px;
   overflow: hidden;
 }
 
 .product-card :deep(.product-artwork--card) {
-  width: auto;
+  width: 100%;
   height: 100%;
-  max-width: 116px;
-  max-height: 100%;
 }
 
 .product-card :deep(.ant-card-meta-title) {

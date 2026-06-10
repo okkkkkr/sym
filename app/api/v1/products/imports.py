@@ -21,9 +21,11 @@ from app.models import User
 from app.models.enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductImportTaskStatus
 from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
-from app.services import artifact_storage_service, product_import_upload_service
+from app.services import artifact_storage_service, product_import_upload_service, product_import_zip_service
 from app.settings import settings
 from app.tasks.product_import import (
+    get_task_extract_dir,
+    get_task_extract_owner_id,
     run_product_import,
     run_product_import_task,
 )
@@ -265,14 +267,12 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     if conflict is not None:
         return conflict
     try:
-        storage_key = await artifact_storage_service.upload_file(
-            merged_file_path,
-            f"product-import/raw/{task_id}/source.zip",
-        )
+        product_import_zip_service.validate_zip(merged_file_path)
+        extract_dir = product_import_zip_service.extract_to_temp(merged_file_path, task_id)
         await product_import_task_controller.update(
             id=task_id,
             obj_in={
-                "storage_key": storage_key,
+                "storage_key": extract_dir,
                 "status": ProductImportTaskStatus.PENDING,
             },
         )
@@ -281,7 +281,7 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
             id=task_id,
             obj_in={
                 "status": ProductImportTaskStatus.FAILED,
-                "error_message": f"上传文件入库失败：{exc}",
+                "error_message": f"ZIP 预处理失败：{exc}",
                 "finished_at": datetime.now(),
             },
         )
@@ -292,7 +292,7 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     return Success(
         data={
             "task_id": task_id,
-            "storage_key": storage_key,
+            "extract_dir": extract_dir,
             "status": ProductImportTaskStatus.PENDING,
         }
     )
@@ -313,22 +313,11 @@ async def get_active_product_import_task(current_user: User = DependAuth):
     return Success(data=await get_active_task_summary())
 
 
-def resolve_task_source_path(storage_key: str) -> str | None:
-    stored_path = artifact_storage_service.resolve_stored_path(storage_key)
-    if stored_path and os.path.exists(stored_path):
-        return stored_path
-    if os.path.isabs(storage_key) and os.path.exists(storage_key):
-        return storage_key
-    relative_path = os.path.join(settings.BASE_DIR, storage_key)
-    if os.path.exists(relative_path):
-        return relative_path
-    return None
-
-
-def ensure_task_source_available(storage_key: str) -> None:
-    if resolve_task_source_path(storage_key):
-        return
-    raise HTTPException(status_code=400, detail="原始导入包不可用，无法重试")
+def ensure_task_extract_available(task) -> str:
+    extract_dir = get_task_extract_dir(get_task_extract_owner_id(task))
+    if os.path.isdir(extract_dir) and os.path.exists(os.path.join(extract_dir, "product.xlsx")):
+        return extract_dir
+    raise HTTPException(status_code=400, detail="导入解压数据不可用，无法重试")
 
 
 async def build_task_detail_summary(task_id: int) -> dict:
@@ -443,11 +432,12 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
         ProductImportTaskStatus.CANCELED,
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可重试任务")
-    ensure_task_source_available(task.storage_key)
+    ensure_task_extract_available(task)
     conflict = await build_active_task_conflict(exclude_task_id=task.id)
     if conflict is not None:
         return conflict
 
+    result_summary = dict(task.result_summary or {})
     await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
     await product_import_task_controller.update(
         id=payload.task_id,
@@ -458,7 +448,11 @@ async def retry_product_import_task(payload: ProductImportTaskActionIn, current_
             "failed_count": 0,
             "progress": 0,
             "error_message": None,
-            "result_summary": {},
+            "result_summary": {
+                key: value
+                for key, value in result_summary.items()
+                if key == "source_extract_task_id"
+            },
             "error_report_path": None,
             "started_at": None,
             "finished_at": None,
@@ -479,7 +473,7 @@ async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, c
         ProductImportTaskStatus.CANCELED,
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可重试失败项")
-    ensure_task_source_available(task.storage_key)
+    ensure_task_extract_available(task)
     conflict = await build_active_task_conflict()
     if conflict is not None:
         return conflict
@@ -503,6 +497,7 @@ async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, c
         id=retry_task.id,
         obj_in={
             "result_summary": {
+                "source_extract_task_id": get_task_extract_owner_id(task),
                 "retry_source_task_id": task.id,
                 "retry_mode": "failed_only",
                 "retry_row_count": len(retry_row_nos),

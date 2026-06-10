@@ -54,7 +54,6 @@ const imageSrc = computed(() => {
   justify-content: center;
   overflow: hidden;
   border: 1px solid rgba(17, 17, 17, 0.08);
-  border-radius: 18px;
   background: #f7f4ee;
 }
 
@@ -80,6 +79,7 @@ const imageSrc = computed(() => {
   height: 100%;
   display: block;
   object-fit: cover;
+  object-position: bottom;
 }
 
 .product-artwork__placeholder {

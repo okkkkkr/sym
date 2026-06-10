@@ -1,7 +1,6 @@
 import asyncio
 import os
 import re
-import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +12,6 @@ from tortoise import Tortoise
 from app.controllers.product import product_controller
 from app.controllers.product_import import product_import_task_controller, product_import_task_item_controller
 from app.core.celery_app import celery_app
-from app.log import logger
 from app.models.admin import Brand, Category, Tag
 from app.models.enums import ProductImportTaskItemStatus, ProductImportTaskStatus
 from app.schemas.product_import import ProductImportMaterialSet, ProductImportParsedRow
@@ -63,6 +61,18 @@ def build_media_object_key(product_name: str, local_path: str, media_type: str) 
 
 def get_extract_dir(task_id: int) -> str:
     return os.path.join(settings.PRODUCT_IMPORT_TMP_DIR, "extract", str(task_id))
+
+
+def get_task_extract_owner_id(task) -> int:
+    source_task_id = dict(task.result_summary or {}).get("source_extract_task_id")
+    try:
+        return int(source_task_id) if source_task_id else int(task.id)
+    except (TypeError, ValueError):
+        return int(task.id)
+
+
+def get_task_extract_dir(task_id: int) -> str:
+    return get_extract_dir(task_id)
 
 
 async def upload_media_files(product_name: str, file_paths: list[str], media_type: str) -> list[dict[str, str]]:
@@ -122,31 +132,6 @@ async def generate_error_report(task_id: int) -> str | None:
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-
-async def cleanup_product_import_upload(zip_path: str) -> None:
-    upload_dir = Path(zip_path).resolve().parent
-    base_dir = Path(settings.PRODUCT_IMPORT_TMP_DIR).resolve()
-
-    try:
-        upload_dir.relative_to(base_dir)
-    except ValueError:
-        return
-
-    meta_path = upload_dir / "meta.json"
-    if not meta_path.exists():
-        return
-
-    await product_import_upload_service.cleanup_upload(upload_dir.name)
-
-
-def resolve_task_zip_path(storage_key: str) -> str:
-    stored_path = artifact_storage_service.resolve_stored_path(storage_key)
-    if stored_path:
-        return stored_path
-    if os.path.isabs(storage_key):
-        return storage_key
-    return os.path.join(settings.BASE_DIR, storage_key)
 
 
 def is_datetime_recent(value: datetime | None, retention_hours: int) -> bool:
@@ -290,8 +275,7 @@ async def cleanup_product_import_temp_files() -> dict:
 async def run_product_import(task_id: int, retry_row_nos: list[int] | None = None) -> None:
     await ensure_tortoise_initialized()
     task = await product_import_task_controller.get(id=task_id)
-    zip_path = resolve_task_zip_path(task.storage_key)
-    extract_dir = get_extract_dir(task_id)
+    extract_dir = get_task_extract_dir(get_task_extract_owner_id(task))
 
     success_count = 0
     failed_count = 0
@@ -302,10 +286,12 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
         if (await product_import_task_controller.mark_running(task_id)).status == ProductImportTaskStatus.CANCELED:
             return
 
+        if not os.path.isdir(extract_dir):
+            raise HTTPException(status_code=404, detail="未找到导入解压目录")
         await product_import_task_item_controller.model.filter(task_id=task_id).delete()
-        product_import_zip_service.validate_zip(zip_path)
-        extract_dir = product_import_zip_service.extract_to_temp(zip_path, task_id)
         workbook_path = os.path.join(extract_dir, "product.xlsx")
+        if not os.path.exists(workbook_path):
+            raise HTTPException(status_code=404, detail="未找到导入模板文件")
         material_map = product_import_zip_service.scan_materials(extract_dir)
         rows = (await product_import_parser_service.parse(workbook_path)).rows
         retry_row_no_set = set(retry_row_nos or [])
@@ -544,11 +530,6 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             ),
             error_message=str(exc),
         )
-    finally:
-        if extract_dir and os.path.exists(extract_dir):
-            shutil.rmtree(extract_dir)
-        if zip_path and os.path.exists(zip_path):
-            await cleanup_product_import_upload(zip_path)
 
 @celery_app.task(name="product_import.run")
 def run_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:

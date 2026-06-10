@@ -1,7 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
-import { LeftOutlined, RightOutlined } from "@ant-design/icons-vue";
 import { message } from 'ant-design-vue'
 import ProductShowcase from '../../components/home/ProductShowcase.vue'
 import ProductArtwork from "../../components/product/ProductArtwork.vue";
@@ -10,6 +9,7 @@ import { fetchCatalogProduct, reportProductClick } from '../../services/catalog'
 const route = useRoute();
 const activeIndex = ref(0);
 const thumbRefs = ref([]);
+const previewVisible = ref(false)
 const product = ref(null)
 const relatedProducts = ref([])
 const brandName = ref('')
@@ -58,6 +58,10 @@ const gallery = computed(() => {
 });
 
 const activeSlide = computed(() => gallery.value[activeIndex.value] || gallery.value[0] || null)
+const previewImages = computed(() => gallery.value.filter((item) => item.type === 'image' && item.src))
+const activePreviewIndex = computed(() =>
+  previewImages.value.findIndex((item) => item.key === activeSlide.value?.key)
+)
 
 watch(product, async () => {
   activeIndex.value = 0;
@@ -88,14 +92,16 @@ function syncActiveThumb(index) {
   });
 }
 
-function goToPreviousSlide() {
-  if (!gallery.value.length) return
-  activeIndex.value = activeIndex.value <= 0 ? gallery.value.length - 1 : activeIndex.value - 1
+function openImagePreview() {
+  if (activeSlide.value?.type !== 'image' || activePreviewIndex.value < 0) {
+    return
+  }
+
+  previewVisible.value = true
 }
 
-function goToNextSlide() {
-  if (!gallery.value.length) return
-  activeIndex.value = activeIndex.value >= gallery.value.length - 1 ? 0 : activeIndex.value + 1
+function handlePreviewVisibleChange(visible) {
+  previewVisible.value = visible
 }
 
 async function loadProduct() {
@@ -163,41 +169,50 @@ watch(() => route.params.productId, () => {
         </div>
 
         <div class="product-detail__stage-wrap">
-          <div class="product-detail__stage">
-            <button
-              type="button"
-              class="product-detail__arrow product-detail__arrow--prev"
-              @click="goToPreviousSlide"
-            >
-              <LeftOutlined style="font-size: 16px;" />
-            </button>
-
-            <template v-if="activeSlide?.type === 'video'">
-              <div class="product-detail__stage-video-wrap">
-                <video
-                  class="product-detail__stage-video"
-                  :src="activeSlide.src"
-                  controls
-                  preload="metadata"
-                  playsinline
+          <a-image-preview-group
+            v-if="previewImages.length"
+            :preview="{
+              visible: previewVisible,
+              current: activePreviewIndex < 0 ? 0 : activePreviewIndex,
+              onVisibleChange: handlePreviewVisibleChange,
+              rootClassName: 'product-detail__preview-root',
+            }"
+          >
+            <div class="product-detail__stage">
+              <template v-if="activeSlide?.type === 'video'">
+                <div class="product-detail__stage-video-wrap">
+                  <video
+                    class="product-detail__stage-video"
+                    :src="activeSlide.src"
+                    controls
+                    preload="metadata"
+                    playsinline
+                  />
+                </div>
+              </template>
+              <button
+                v-else-if="activeSlide"
+                type="button"
+                class="product-detail__stage-preview-trigger"
+                @click="openImagePreview"
+              >
+                <ProductArtwork
+                  :product="product"
+                  :image-url="activeSlide.src"
+                  mode="detail"
                 />
-              </div>
-            </template>
-            <ProductArtwork
-              v-else-if="activeSlide"
-              :product="product"
-              :image-url="activeSlide.src"
-              mode="detail"
-            />
+              </button>
+            </div>
 
-            <button
-              type="button"
-              class="product-detail__arrow product-detail__arrow--next"
-              @click="goToNextSlide"
-            >
-              <RightOutlined style="font-size: 16px;" />
-            </button>
-          </div>
+            <div class="product-detail__preview-assets" aria-hidden="true">
+              <a-image
+                v-for="image in previewImages"
+                :key="image.key"
+                :src="image.src"
+                :alt="product.name"
+              />
+            </div>
+          </a-image-preview-group>
         </div>
       </div>
 
@@ -380,39 +395,18 @@ watch(() => route.params.productId, () => {
   background: #f3eee5;
 }
 
-.product-detail__arrow {
-  position: absolute;
-  top: 50%;
-  z-index: 2;
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(17, 17, 17, 0.15);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: #111111;
-  opacity: 0.42;
-  cursor: pointer;
-  transform: translateY(-50%);
-  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+.product-detail__stage-preview-trigger {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  cursor: zoom-in;
 }
 
-.product-detail__arrow:hover,
-.product-detail__arrow:focus-visible {
-  border-color: #1d62ec;
-  color: #1d62ec;
-  opacity: 0.92;
-  box-shadow: 0 12px 24px rgba(17, 17, 17, 0.1);
-}
-
-.product-detail__arrow--prev {
-  left: 10px;
-}
-
-.product-detail__arrow--next {
-  right: 10px;
+.product-detail__preview-assets {
+  display: none;
 }
 
 .product-detail__stage-video-wrap {
@@ -538,6 +532,19 @@ watch(() => route.params.productId, () => {
   color: #3b3a38;
   font-size: clamp(34px, 4vw, 56px);
   line-height: 0.95;
+}
+
+:deep(.product-detail__preview-root .ant-image-preview-img-wrapper) {
+  box-sizing: border-box;
+  padding-inline: 20vw;
+}
+
+:deep(.product-detail__preview-root .ant-image-preview-img) {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
 }
 
 @media (max-width: 1100px) {

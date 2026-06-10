@@ -72,8 +72,9 @@ const overflowCategories = computed(() => {
   return categories.value.slice(2);
 });
 
+const isCatalogRoute = computed(() => route.path === "/sym" || route.path.startsWith("/sym/"));
 const selectedKeys = computed(() =>
-  route.path === "/sym" ? [currentCategory.value] : [],
+  isCatalogRoute.value && currentCategory.value ? [currentCategory.value] : [],
 );
 const menuVisible = computed(
   () => props.showCategories && categories.value.length > 0,
@@ -84,7 +85,7 @@ function categoryLink(categoryKey) {
 }
 
 function isActiveCategory(categoryKey) {
-  return route.path === "/sym" && currentCategory.value === categoryKey;
+  return isCatalogRoute.value && currentCategory.value === categoryKey;
 }
 
 function updateSmallScreenState(event) {
