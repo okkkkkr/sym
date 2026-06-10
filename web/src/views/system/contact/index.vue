@@ -94,6 +94,14 @@ const contactTypeOptions = [
   { label: 'phone', value: 'phone' },
 ]
 
+const platformOptions = [
+  { label: 'facebook', value: 'facebook' },
+  { label: 'whatsapp', value: 'whatsapp' },
+  { label: 'wechat', value: 'wechat' },
+  { label: 'email', value: 'email' },
+  { label: 'phone', value: 'phone' },
+]
+
 const contactTypeFilterOptions = [{ label: '全部类型', value: 'all' }, ...contactTypeOptions]
 const statusOptions = [
   { label: '全部状态', value: 'all' },
@@ -286,8 +294,8 @@ function handleSave() {
 const rules = {
   platform: {
     required: true,
-    message: '请输入平台标识',
-    trigger: ['input', 'blur'],
+    message: '请选择平台',
+    trigger: ['change', 'blur'],
   },
   display_name: {
     required: true,
@@ -534,7 +542,11 @@ async function toggleStatus(row, nextValue) {
         :rules="rules"
       >
         <NFormItem label="平台" path="platform">
-          <NInput v-model:value="modalForm.platform" clearable placeholder="请输入平台标识" />
+          <NSelect
+            v-model:value="modalForm.platform"
+            :options="platformOptions"
+            placeholder="请选择平台"
+          />
         </NFormItem>
         <NFormItem label="展示名称" path="display_name">
           <NInput v-model:value="modalForm.display_name" clearable placeholder="请输入展示名称" />
