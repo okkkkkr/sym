@@ -6,8 +6,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-sym}
       POSTGRES_USER: ${POSTGRES_USER:-sym}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -44,6 +44,8 @@ services:
     volumes:
       - uploads_data:/opt/sym/uploads
       - tmp_data:/opt/sym/tmp
+    expose:
+      - "9999"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9999/openapi.json >/dev/null || exit 1"]
       interval: 15s
@@ -102,9 +104,21 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "6868:80"
+      - "80:80"
+      - "443:443"
     volumes:
       - uploads_data:/usr/share/nginx/uploads:ro
+      - ./deploy/docker/nginx.bootstrap.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot
+
+  certbot:
+    image: certbot/certbot:latest
+    profiles:
+      - certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
 
 volumes:
   postgres_data:

@@ -1,3 +1,5 @@
+import { apiUrl } from './http'
+
 function normalizeCommonConfig(commonConfig = {}) {
   return {
     show_banner: commonConfig.show_banner !== false,
@@ -7,7 +9,7 @@ function normalizeCommonConfig(commonConfig = {}) {
 }
 
 export async function fetchHomeLayout() {
-  const response = await fetch('/api/v1/base/home-layout')
+  const response = await fetch(apiUrl('/base/home-layout'))
   const payload = await response.json()
 
   if (!response.ok || payload?.code !== 200) {

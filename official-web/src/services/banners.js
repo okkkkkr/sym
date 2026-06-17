@@ -1,5 +1,7 @@
+import { apiUrl, sendApiBeacon } from './http'
+
 export async function fetchActiveBanners() {
-  const response = await fetch('/api/v1/base/banners')
+  const response = await fetch(apiUrl('/base/banners'))
   const payload = await response.json()
 
   if (!response.ok) {
@@ -9,20 +11,8 @@ export async function fetchActiveBanners() {
   return Array.isArray(payload.data) ? payload.data : []
 }
 
-function sendBannerTrackingByBeacon(body) {
-  if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
-    return false
-  }
-
-  const payload = new Blob([JSON.stringify(body)], {
-    type: 'application/json',
-  })
-
-  return navigator.sendBeacon('/api/v1/base/track/banner-click', payload)
-}
-
 async function postBannerTracking(body) {
-  const response = await fetch('/api/v1/base/track/banner-click', {
+  const response = await fetch(apiUrl('/base/track/banner-click'), {
     method: 'POST',
     keepalive: true,
     headers: {
@@ -49,7 +39,7 @@ export async function reportBannerClick(bannerId, options = {}) {
     banner_id: normalizedBannerId,
   }
 
-  if (options.transport !== 'fetch' && sendBannerTrackingByBeacon(payload)) {
+  if (options.transport !== 'fetch' && sendApiBeacon('/base/track/banner-click', payload)) {
     return true
   }
 

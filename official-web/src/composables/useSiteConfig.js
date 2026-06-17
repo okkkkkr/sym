@@ -1,4 +1,5 @@
 import { readonly, ref } from 'vue'
+import { apiUrl } from '../services/http'
 
 const emptySiteConfig = Object.freeze({
   logo_url: '',
@@ -26,7 +27,7 @@ function normalizeSiteConfig(payload = {}) {
 }
 
 async function fetchPublicSiteConfig() {
-  const response = await fetch('/api/v1/base/site-config')
+  const response = await fetch(apiUrl('/base/site-config'))
   const payload = await response.json()
 
   if (!response.ok) {

@@ -54,6 +54,6 @@ FROM nginx:1.27-alpine AS nginx_runtime
 
 COPY --from=admin_web /opt/sym/web/dist /usr/share/nginx/html/admin
 COPY --from=public_web /opt/sym/official-web/dist /usr/share/nginx/html/official
-COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/docker/nginx.bootstrap.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

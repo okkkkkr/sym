@@ -1,4 +1,5 @@
 import { getOrCreateVisitorId } from './catalog'
+import { apiUrl, sendApiBeacon } from './http'
 
 const CONTACT_CLICK_TS_STORAGE_KEY_PREFIX = 'sym:last-contact-click-track-at:'
 const CONTACT_CLICK_WINDOW_MS = 30 * 60 * 1000
@@ -10,7 +11,7 @@ export async function fetchActiveContacts(contactType = '') {
   }
 
   const suffix = query.toString() ? `?${query.toString()}` : ''
-  const response = await fetch(`/api/v1/base/contacts${suffix}`)
+  const response = await fetch(apiUrl(`/base/contacts${suffix}`))
   const payload = await response.json()
 
   if (!response.ok) {
@@ -28,20 +29,8 @@ function getStorage() {
   return window.localStorage
 }
 
-function sendContactTrackingByBeacon(body) {
-  if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
-    return false
-  }
-
-  const payload = new Blob([JSON.stringify(body)], {
-    type: 'application/json',
-  })
-
-  return navigator.sendBeacon('/api/v1/base/track/contact-click', payload)
-}
-
 async function postContactTracking(body) {
-  const response = await fetch('/api/v1/base/track/contact-click', {
+  const response = await fetch(apiUrl('/base/track/contact-click'), {
     method: 'POST',
     keepalive: true,
     headers: {
@@ -77,7 +66,7 @@ export async function reportContactClick(contactId, options = {}) {
     contact_id: normalizedContactId,
   }
 
-  if (options.transport !== 'fetch' && sendContactTrackingByBeacon(payload)) {
+  if (options.transport !== 'fetch' && sendApiBeacon('/base/track/contact-click', payload)) {
     storage.setItem(storageKey, String(Date.now()))
     return true
   }

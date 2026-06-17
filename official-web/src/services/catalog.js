@@ -1,3 +1,5 @@
+import { apiUrl } from './http'
+
 export function normalizeCategoryKey(category) {
   return String(category || '')
     .trim()
@@ -16,7 +18,7 @@ export function resolveCategoryKey(categories = [], category = '') {
 }
 
 export async function fetchCatalogCategories() {
-  const response = await fetch('/api/v1/base/categories')
+  const response = await fetch(apiUrl('/base/categories'))
   const payload = await response.json()
 
   if (!response.ok) {
@@ -58,7 +60,7 @@ export async function fetchCatalog(options = {}) {
     query.set('page_size', String(pageSize))
   }
 
-  const response = await fetch(`/api/v1/base/catalog?${query.toString()}`)
+  const response = await fetch(apiUrl(`/base/catalog?${query.toString()}`))
   const payload = await response.json()
 
   if (!response.ok) {
@@ -69,7 +71,7 @@ export async function fetchCatalog(options = {}) {
 }
 
 export async function fetchCatalogProduct(productId) {
-  const response = await fetch(`/api/v1/base/catalog/products/${encodeURIComponent(productId)}`)
+  const response = await fetch(apiUrl(`/base/catalog/products/${encodeURIComponent(productId)}`))
   const payload = await response.json()
 
   if (!response.ok) {
@@ -160,7 +162,7 @@ async function postTracking(url, body) {
 
 export async function reportProductClick(productId) {
   try {
-    await postTracking('/api/v1/base/track/product-click', {
+    await postTracking(apiUrl('/base/track/product-click'), {
       product_id: Number.parseInt(String(productId), 10),
     })
     return true
@@ -180,7 +182,7 @@ export async function reportBrandSearch(brandIds = []) {
   }
 
   try {
-    await postTracking('/api/v1/base/track/brand-search', {
+    await postTracking(apiUrl('/base/track/brand-search'), {
       brand_ids: normalizedBrandIds,
     })
     return true
@@ -201,7 +203,7 @@ export async function reportSiteVisit(path = '') {
   }
 
   try {
-    await postTracking('/api/v1/base/track/site-visit', {
+    await postTracking(apiUrl('/base/track/site-visit'), {
       visitor_id: visitorId,
       path: path || window.location.pathname || '/',
     })
@@ -228,7 +230,7 @@ export async function reportChannelVisit() {
   }
 
   try {
-    await postTracking('/api/v1/base/track/channel-visit', {
+    await postTracking(apiUrl('/base/track/channel-visit'), {
       visitor_id: visitorId,
       plat,
     })
