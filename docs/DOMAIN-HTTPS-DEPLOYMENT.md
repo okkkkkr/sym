@@ -39,6 +39,7 @@ DNS 只能解析到 IP，不能解析到业务端口。
 APP_HOST=0.0.0.0
 APP_PORT=9999
 PUBLIC_SITE_URL=https://symluxlib.com
+NGINX_DEFAULT_CONF_FILE=nginx.bootstrap.conf
 CORS_ORIGINS=["https://symluxlib.com","https://www.symluxlib.com","https://admin.symluxlib.com"]
 ```
 
@@ -86,16 +87,28 @@ certbot/conf/live/symluxlib.com/privkey.pem
 
 ## 6. 切换 HTTPS
 
-证书成功后使用 HTTPS 覆盖配置启动 Nginx：
+证书成功后，把 `.env.docker` 里的：
 
-```bash
-docker compose -f compose.yaml -f compose.https.yaml --env-file .env.docker up -d nginx
+```env
+NGINX_DEFAULT_CONF_FILE=nginx.bootstrap.conf
 ```
 
-后续更新生产服务也建议继续带上覆盖文件：
+改成：
+
+```env
+NGINX_DEFAULT_CONF_FILE=nginx.https.conf
+```
+
+然后重建 Nginx：
 
 ```bash
-docker compose -f compose.yaml -f compose.https.yaml --env-file .env.docker up -d --build
+docker compose --env-file .env.docker up -d --force-recreate nginx
+```
+
+后续更新生产服务不再需要额外的覆盖文件：
+
+```bash
+docker compose --env-file .env.docker up -d --build
 ```
 
 ## 7. 自动续期
@@ -105,7 +118,7 @@ docker compose -f compose.yaml -f compose.https.yaml --env-file .env.docker up -
 ```bash
 cd /path/to/sym
 docker compose --profile certbot --env-file .env.docker run --rm certbot renew
-docker compose -f compose.yaml -f compose.https.yaml --env-file .env.docker exec nginx nginx -s reload
+docker compose --env-file .env.docker exec nginx nginx -s reload
 ```
 
 ## 8. 验收
