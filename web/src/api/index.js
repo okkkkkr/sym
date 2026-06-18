@@ -64,6 +64,7 @@ export default {
   getUserMenu: () => request.get('/base/usermenu'),
   getUserApi: () => request.get('/base/userapi'),
   getDashboardOverview: () => request.get('/base/dashboard_overview'),
+  refreshCertificateStatuses: () => request.post('/base/certificate-status/refresh'),
   // profile
   updatePassword: (data = {}) => request.post('/base/update_password', data),
   // users
@@ -153,7 +154,8 @@ export default {
   deleteSiteConfigLogo: (data = {}) => request.post('/site-config/logo/delete', data),
   updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getHomeLayoutDraft: () => request.get('/home-layout/draft'),
-  getHomeLayoutImageUploadToken: (data = {}) => request.post('/home-layout/image/upload-token', data),
+  getHomeLayoutImageUploadToken: (data = {}) =>
+    request.post('/home-layout/image/upload-token', data),
   saveHomeLayoutDraft: (data = {}) => request.post('/home-layout/draft/save', data),
   publishHomeLayout: (data = {}) => request.post('/home-layout/publish', data),
   getCurrentHomeLayout: () => request.get('/home-layout/current'),

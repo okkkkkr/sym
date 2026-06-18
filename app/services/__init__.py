@@ -1,3 +1,4 @@
+from .certificate_monitor import certificate_monitor_service as certificate_monitor_service
 from .product_media_upload import product_media_upload_service as product_media_upload_service
 from .product_import_parser import product_import_parser_service as product_import_parser_service
 from .product_import_upload import product_import_upload_service as product_import_upload_service
@@ -9,6 +10,7 @@ from .storage import storage_service as storage_service
 
 __all__ = [
     "artifact_storage_service",
+    "certificate_monitor_service",
     "get_storage_service",
     "media_storage_service",
     "product_import_parser_service",

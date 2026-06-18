@@ -19,6 +19,89 @@
         </n-card>
 
         <div class="dashboard-layout">
+          <n-card
+            class="certificate-card"
+            :title="t('views.workbench.label_certificate_status')"
+            size="small"
+            rounded-10
+          >
+            <template #header-extra>
+              <div class="certificate-card__extra">
+                <span class="certificate-card__summary">
+                  {{
+                    certificateWarningTotal
+                      ? t('views.workbench.label_certificate_warnings', {
+                          count: certificateWarningTotal,
+                        })
+                      : t('views.workbench.text_certificate_warnings_none')
+                  }}
+                </span>
+                <n-button
+                  size="small"
+                  secondary
+                  :loading="isCertificateRefreshing"
+                  @click="refreshCertificateStatuses"
+                >
+                  {{ t('views.workbench.action_refresh') }}
+                </n-button>
+              </div>
+            </template>
+
+            <div class="certificate-list">
+              <div
+                v-for="item in certificateStatuses"
+                :key="item.code"
+                class="certificate-item"
+                :class="`certificate-item--${item.status || 'error'}`"
+              >
+                <div class="certificate-item__header">
+                  <div class="certificate-item__title-group">
+                    <strong class="certificate-item__title">{{ item.display_name || '-' }}</strong>
+                    <span class="certificate-item__domain">{{ item.domain || '-' }}</span>
+                  </div>
+                  <n-tag size="small" :type="getCertificateTagType(item.status)" round>
+                    {{ getCertificateStatusLabel(item.status) }}
+                  </n-tag>
+                </div>
+
+                <div class="certificate-item__grid">
+                  <div class="certificate-item__field">
+                    <span class="certificate-item__label">
+                      {{ t('views.workbench.label_certificate_expire_at') }}
+                    </span>
+                    <span class="certificate-item__value">{{ item.not_after || '-' }}</span>
+                  </div>
+                  <div class="certificate-item__field">
+                    <span class="certificate-item__label">
+                      {{ t('views.workbench.label_certificate_days_remaining') }}
+                    </span>
+                    <span class="certificate-item__value">
+                      {{ formatDaysRemaining(item.days_remaining) }}
+                    </span>
+                  </div>
+                  <div class="certificate-item__field">
+                    <span class="certificate-item__label">
+                      {{ t('views.workbench.label_certificate_checked_at') }}
+                    </span>
+                    <span class="certificate-item__value">{{ item.last_checked_at || '-' }}</span>
+                  </div>
+                  <div class="certificate-item__field">
+                    <span class="certificate-item__label">
+                      {{ t('views.workbench.label_certificate_path') }}
+                    </span>
+                    <span class="certificate-item__value certificate-item__path">
+                      {{ item.cert_path || '-' }}
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="item.last_error" class="certificate-item__error">
+                  {{ item.last_error }}
+                </div>
+              </div>
+            </div>
+          </n-card>
+
           <div class="ranking-grid">
             <n-card
               v-for="panel in rankingPanels"
@@ -28,7 +111,11 @@
               rounded-10
             >
               <template #header-extra>
-                <button class="ranking-card__link" type="button" @click="navigateToRoute(panel.routeName)">
+                <button
+                  class="ranking-card__link"
+                  type="button"
+                  @click="navigateToRoute(panel.routeName)"
+                >
                   {{ $t('views.workbench.action_view_more') }}
                 </button>
               </template>
@@ -42,7 +129,9 @@
                     type="button"
                     @click="navigateToRoute(panel.routeName)"
                   >
-                    <span class="ranking-item__index">{{ String(index + 1).padStart(2, '0') }}</span>
+                    <span class="ranking-item__index">
+                      {{ String(index + 1).padStart(2, '0') }}
+                    </span>
                     <div class="ranking-item__body">
                       <strong class="ranking-item__title">{{ panel.getTitle(item) }}</strong>
                       <span class="ranking-item__meta">{{ panel.getMeta(item) }}</span>
@@ -70,6 +159,7 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n({ useScope: 'global' })
 const router = useRouter()
 const isLoading = ref(false)
+const isCertificateRefreshing = ref(false)
 
 const dashboardState = ref({
   productTotal: 0,
@@ -88,12 +178,20 @@ const dashboardState = ref({
   todayVisitTotal: 0,
 })
 
+const certificateStatuses = ref([])
 const rankingState = ref({
   productClicks: [],
   brandSearches: [],
   bannerClicks: [],
   channelVisits: [],
 })
+
+const certificateWarningTotal = computed(
+  () =>
+    certificateStatuses.value.filter((item) =>
+      ['warning', 'expired', 'error'].includes(item.status)
+    ).length
+)
 
 const statisticData = computed(() => [
   {
@@ -151,7 +249,9 @@ const rankingPanels = computed(() => [
     routeName: '好物点击数据',
     items: rankingState.value.productClicks,
     getTitle: (item) => item.name || '-',
-    getMeta: (item) => [item.category?.name, item.brand?.name].filter(Boolean).join(' / ') || t('views.workbench.text_rank_no_meta'),
+    getMeta: (item) =>
+      [item.category?.name, item.brand?.name].filter(Boolean).join(' / ') ||
+      t('views.workbench.text_rank_no_meta'),
     getValue: (item) => item.click_count || 0,
   },
   {
@@ -217,6 +317,7 @@ async function fetchDashboardData() {
       todayAuditTotal: data?.today_audit_total || 0,
       todayVisitTotal: data?.today_visit_total || 0,
     }
+    certificateStatuses.value = data?.certificate_statuses || []
   } catch (error) {
     console.error('fetchDashboardData error', error)
   }
@@ -249,6 +350,41 @@ async function fetchWorkbenchData() {
     await Promise.all([fetchDashboardData(), fetchRankingData()])
   } finally {
     isLoading.value = false
+  }
+}
+
+function getCertificateTagType(status) {
+  if (status === 'valid') return 'success'
+  if (status === 'warning') return 'warning'
+  if (status === 'expired' || status === 'error') return 'error'
+  return 'default'
+}
+
+function getCertificateStatusLabel(status) {
+  if (status === 'valid') return t('views.workbench.label_certificate_status_valid')
+  if (status === 'warning') return t('views.workbench.label_certificate_status_warning')
+  if (status === 'expired') return t('views.workbench.label_certificate_status_expired')
+  return t('views.workbench.label_certificate_status_error')
+}
+
+function formatDaysRemaining(daysRemaining) {
+  if (typeof daysRemaining !== 'number') {
+    return t('views.workbench.text_certificate_days_remaining_unknown')
+  }
+  return t('views.workbench.text_certificate_days_remaining', { count: daysRemaining })
+}
+
+async function refreshCertificateStatuses() {
+  isCertificateRefreshing.value = true
+
+  try {
+    const { data } = await api.refreshCertificateStatuses()
+    certificateStatuses.value = data?.certificate_statuses || []
+    $message.success(t('views.workbench.message_certificate_refresh_success'))
+  } catch (error) {
+    console.error('refreshCertificateStatuses error', error)
+  } finally {
+    isCertificateRefreshing.value = false
   }
 }
 
@@ -309,7 +445,108 @@ onMounted(() => {
 }
 
 .dashboard-layout {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.certificate-card__extra {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.certificate-card__summary {
+  font-size: 12px;
+  color: rgba(23, 32, 51, 0.58);
+}
+
+.certificate-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.certificate-item {
+  border: 1px solid #eef2f8;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fff 0%, #fbfcfe 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.certificate-item--warning {
+  border-color: rgba(245, 166, 35, 0.35);
+  background: linear-gradient(180deg, #fffdf6 0%, #fff 100%);
+}
+
+.certificate-item--expired,
+.certificate-item--error {
+  border-color: rgba(208, 48, 80, 0.28);
+  background: linear-gradient(180deg, #fff8f8 0%, #fff 100%);
+}
+
+.certificate-item__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.certificate-item__title-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.certificate-item__title {
+  font-size: 15px;
+  color: #172033;
+}
+
+.certificate-item__domain {
+  font-size: 12px;
+  color: rgba(23, 32, 51, 0.58);
+}
+
+.certificate-item__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.certificate-item__field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.certificate-item__label {
+  font-size: 12px;
+  color: rgba(23, 32, 51, 0.58);
+}
+
+.certificate-item__value {
+  font-size: 13px;
+  color: #172033;
+  word-break: break-word;
+}
+
+.certificate-item__path {
+  font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.certificate-item__error {
+  font-size: 12px;
+  color: #d03050;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(208, 48, 80, 0.08);
 }
 
 .ranking-grid {
@@ -419,6 +656,10 @@ onMounted(() => {
   .ranking-grid {
     grid-template-columns: 1fr;
   }
+
+  .certificate-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -432,6 +673,15 @@ onMounted(() => {
 
   .ranking-item__value {
     grid-column: 2;
+  }
+
+  .certificate-card__extra {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .certificate-item__grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

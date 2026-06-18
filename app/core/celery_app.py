@@ -17,6 +17,10 @@ celery_app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=False,
     beat_schedule={
+        "certificate-monitor-refresh-statuses": {
+            "task": "certificate_monitor.refresh_statuses",
+            "schedule": settings.CERT_MONITOR_INTERVAL_SECONDS,
+        },
         "product-import-cleanup-temp-files": {
             "task": "product_import.cleanup_temp_files",
             "schedule": settings.PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS,

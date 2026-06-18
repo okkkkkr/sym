@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     QINIU_IS_PRIVATE: bool = False
     QINIU_URL_EXPIRE_SECONDS: int = 3600
     QINIU_UPLOAD_TIMEOUT_SECONDS: int = 300
+    CERT_MONITOR_ENABLED: bool = True
+    CERT_MONITOR_INTERVAL_SECONDS: int = 21600
+    CERT_MONITOR_WARNING_DAYS: int = 30
+    CERT_MONITOR_MAIN_CERT_PATH: str = os.path.join(
+        BASE_DIR, "certbot", "conf", "live", "symluxlib.com", "fullchain.pem"
+    )
+    CERT_MONITOR_STATIC_CERT_PATH: str = os.path.join(
+        BASE_DIR, "certs", "static.symluxlib.com", "fullchain.pem"
+    )
     PUBLIC_SITE_URL: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432

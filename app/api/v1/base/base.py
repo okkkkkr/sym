@@ -32,6 +32,7 @@ from app.models.admin import (
     Platform,
     Product,
     Role,
+    CertificateStatus,
     SiteVisit,
     User,
 )
@@ -44,6 +45,7 @@ from app.schemas.stats import (
     TrackProductClickIn,
     TrackSiteVisitIn,
 )
+from app.services.certificate_monitor import CERTIFICATE_SPECS, certificate_monitor_service
 from app.services.product_media_upload import product_media_upload_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
@@ -231,6 +233,10 @@ async def serialize_dashboard_log(log_obj):
     }
 
 
+def count_certificate_warnings(certificate_statuses: list[dict]) -> int:
+    return sum(1 for item in certificate_statuses if item.get("status") in {"warning", "expired", "error"})
+
+
 @router.get("/dashboard_overview", summary="查看工作台概览", dependencies=[DependAuth])
 async def get_dashboard_overview():
     now = datetime.now()
@@ -259,6 +265,7 @@ async def get_dashboard_overview():
         top_product_objs,
         top_brand_objs,
         recent_log_objs,
+        certificate_status_records,
     ) = await asyncio.gather(
         Product.all().count(),
         Product.filter(status=True).count(),
@@ -275,6 +282,10 @@ async def get_dashboard_overview():
         Product.all().annotate(**product_order_annotations).order_by(*product_overview_order).limit(10),
         Brand.all().annotate(**brand_order_annotations).order_by(*brand_overview_order).limit(10),
         AuditLog.all().order_by("-created_at").limit(6),
+        CertificateStatus.all().count(),
+    )
+    certificate_statuses = await certificate_monitor_service.list_statuses(
+        auto_refresh_missing=certificate_status_records < len(CERTIFICATE_SPECS)
     )
 
     return Success(
@@ -299,6 +310,19 @@ async def get_dashboard_overview():
             "top_products": [serialize_dashboard_product(item) for item in top_product_objs],
             "top_brands": [serialize_dashboard_brand(item) for item in top_brand_objs],
             "recent_logs": [await serialize_dashboard_log(item) for item in recent_log_objs],
+            "certificate_statuses": certificate_statuses,
+            "certificate_warning_total": count_certificate_warnings(certificate_statuses),
+        }
+    )
+
+
+@router.post("/certificate-status/refresh", summary="立即刷新证书状态", dependencies=[DependAuth])
+async def refresh_certificate_status():
+    certificate_statuses = await certificate_monitor_service.refresh_statuses()
+    return Success(
+        data={
+            "certificate_statuses": certificate_statuses,
+            "certificate_warning_total": count_certificate_warnings(certificate_statuses),
         }
     )
 

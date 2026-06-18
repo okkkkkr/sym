@@ -120,6 +120,22 @@ class SiteConfig(BaseModel, TimestampMixin):
         table = "site_config"
 
 
+class CertificateStatus(BaseModel, TimestampMixin):
+    code = fields.CharField(max_length=50, unique=True, description="证书标识", index=True)
+    display_name = fields.CharField(max_length=100, default="", description="展示名称")
+    domain = fields.CharField(max_length=255, default="", description="域名")
+    cert_path = fields.CharField(max_length=500, default="", description="证书文件路径")
+    status = fields.CharField(max_length=20, default="error", description="证书状态", index=True)
+    not_before = fields.DatetimeField(null=True, description="生效时间", index=True)
+    not_after = fields.DatetimeField(null=True, description="过期时间", index=True)
+    days_remaining = fields.IntField(null=True, description="剩余天数", index=True)
+    last_checked_at = fields.DatetimeField(null=True, description="最后检查时间", index=True)
+    last_error = fields.CharField(max_length=500, default="", description="最近错误信息")
+
+    class Meta:
+        table = "certificate_status"
+
+
 class HomeLayout(BaseModel, TimestampMixin):
     page_code = fields.CharField(max_length=50, default="home", description="页面标识", index=True)
     status = fields.CharField(max_length=20, default="draft", description="状态", index=True)
