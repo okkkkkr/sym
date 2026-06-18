@@ -44,6 +44,28 @@ docker compose --env-file .env.docker up -d --build
 docker compose --env-file .env.docker ps
 ```
 
+补充：
+
+- 这条命令默认只使用 [compose.yaml](/Users/kun/dida/sym/compose.yaml:1)，适合服务器部署
+- 如果你在本地开发，需要使用 [compose.local.yaml](/Users/kun/dida/sym/compose.local.yaml:1) 做覆盖
+
+本地 Docker 启动命令：
+
+```bash
+docker compose --env-file .env.docker -f compose.yaml -f compose.local.yaml up -d --build
+```
+
+本地覆盖当前会做两件事：
+
+- 把 Nginx 端口改成 `6868:80`
+- 把 Nginx 配置切到 [deploy/docker/nginx.conf](/Users/kun/dida/sym/deploy/docker/nginx.conf:1)，避免 `localhost` 跳转到线上域名
+
+本地覆盖还会额外修正前端构建参数：
+
+- 管理后台使用 `VITE_PUBLIC_PATH=/admin/`
+- 管理后台 API 使用 `/api/v1`
+- 官网 API 使用 `/api/v1`
+
 ## 2. 如何停掉本项目的 Docker？
 
 停止并删除整个项目的容器网络：

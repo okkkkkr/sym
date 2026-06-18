@@ -1,21 +1,30 @@
+ARG WEB_VITE_PUBLIC_PATH=/
+ARG WEB_VITE_BASE_API=https://api.symluxlib.com/api/v1
+ARG PUBLIC_VITE_API_BASE_URL=https://api.symluxlib.com/api/v1
+
 FROM node:20.20.2-bullseye AS admin_web
+
+ARG WEB_VITE_PUBLIC_PATH
+ARG WEB_VITE_BASE_API
 
 WORKDIR /opt/sym
 COPY web/package.json web/pnpm-lock.yaml ./web/
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 RUN cd /opt/sym/web && pnpm install --frozen-lockfile
 COPY web ./web
-RUN cd /opt/sym/web && pnpm build
+RUN cd /opt/sym/web && VITE_PUBLIC_PATH="${WEB_VITE_PUBLIC_PATH}" VITE_BASE_API="${WEB_VITE_BASE_API}" pnpm build
 
 
 FROM node:20.20.2-bullseye AS public_web
+
+ARG PUBLIC_VITE_API_BASE_URL
 
 WORKDIR /opt/sym
 COPY official-web/package.json official-web/pnpm-lock.yaml ./official-web/
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 RUN cd /opt/sym/official-web && pnpm install --frozen-lockfile
 COPY official-web ./official-web
-RUN cd /opt/sym/official-web && pnpm build
+RUN cd /opt/sym/official-web && VITE_API_BASE_URL="${PUBLIC_VITE_API_BASE_URL}" pnpm build
 
 
 FROM python:3.11-slim-bullseye AS app_runtime
