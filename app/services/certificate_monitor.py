@@ -1,5 +1,6 @@
 import ssl
 from datetime import datetime
+from pathlib import Path
 
 from app.models.admin import CertificateStatus
 from app.settings import settings
@@ -54,13 +55,14 @@ def _build_status_payload(spec: dict, now: datetime) -> dict:
         payload["last_error"] = "未配置证书路径"
         return payload
 
+    if not Path(cert_path).is_file():
+        payload["last_error"] = "证书文件不存在"
+        return payload
+
     try:
         cert_info = ssl._ssl._test_decode_cert(cert_path)
         not_before = _parse_certificate_datetime(cert_info.get("notBefore"))
         not_after = _parse_certificate_datetime(cert_info.get("notAfter"))
-    except FileNotFoundError:
-        payload["last_error"] = "证书文件不存在"
-        return payload
     except ssl.SSLError:
         payload["last_error"] = "证书内容异常"
         return payload
