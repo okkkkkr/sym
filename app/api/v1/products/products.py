@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from tortoise.expressions import Q
 
@@ -9,7 +9,7 @@ from app.controllers.tag import tag_controller
 from app.core.dependency import DependAuth
 from app.models import User
 from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 from app.settings import settings
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
 from app.schemas.products import ProductCreate, ProductMediaUploadTokenIn, ProductUpdate
@@ -21,7 +21,18 @@ router = APIRouter()
 @router.post("/media/upload-token", summary="获取好物媒体上传凭证")
 async def get_product_media_upload_token(payload: ProductMediaUploadTokenIn, current_user: User = DependAuth):
     _ = current_user
-    return Success(data=product_media_upload_service.create_upload_credentials(**payload.model_dump()))
+    _ = payload
+    raise HTTPException(status_code=410, detail="上传凭证接口已废弃，请使用后端中转上传接口")
+
+
+@router.post("/media/upload", summary="上传好物媒体文件")
+async def upload_product_media(
+    media_type: str = Query(..., description="媒体类型: cover/image/video"),
+    file: UploadFile = File(...),
+    current_user: User = DependAuth,
+):
+    _ = current_user
+    return Success(data=await media_storage_service.upload(file, media_type))
 
 
 async def serialize_product_payload(product_obj):
@@ -29,16 +40,16 @@ async def serialize_product_payload(product_obj):
     product_data["cover_image_key"] = product_data.get("cover_image_key") or ""
     product_data["image_keys"] = list(product_data.get("image_keys") or [])
     product_data["video_keys"] = list(product_data.get("video_keys") or [])
-    product_data["cover_image_url"] = product_media_upload_service.serialize_object_key(product_data.get("cover_image_key"))
+    product_data["cover_image_url"] = media_storage_service.serialize_object_key(product_data.get("cover_image_key"))
     product_data["image_urls"] = [
-        product_media_upload_service.serialize_object_key(item)
-        for item in product_data.get("image_keys") or []
+        media_storage_service.serialize_object_key(item) for item in product_data.get("image_keys") or []
     ]
     product_data["video_urls"] = [
-        product_media_upload_service.serialize_object_key(item)
-        for item in product_data.get("video_keys") or []
+        media_storage_service.serialize_object_key(item) for item in product_data.get("video_keys") or []
     ]
-    product_data["product_code_custom"] = product_controller.extract_product_code_custom(product_data.get("product_code"))
+    product_data["product_code_custom"] = product_controller.extract_product_code_custom(
+        product_data.get("product_code")
+    )
     tag_sort_annotations, tag_sort_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
     product_data["tags"] = [
         {"id": tag.id, "name": tag.name}
@@ -224,8 +235,14 @@ async def delete_product(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_product_ids(payload)
     media_keys = normalize_media_keys(
         key
-        for product in await product_controller.model.filter(id__in=ids).values("cover_image_key", "image_keys", "video_keys")
-        for key in [product.get("cover_image_key"), *(product.get("image_keys") or []), *(product.get("video_keys") or [])]
+        for product in await product_controller.model.filter(id__in=ids).values(
+            "cover_image_key", "image_keys", "video_keys"
+        )
+        for key in [
+            product.get("cover_image_key"),
+            *(product.get("image_keys") or []),
+            *(product.get("video_keys") or []),
+        ]
     )
     deleted_count = await product_controller.remove_many(ids=ids)
     await delete_media_keys(media_keys)
@@ -236,12 +253,22 @@ async def delete_product(payload: DeleteIdsIn = Body(...)):
 async def export_product(payload: DeleteIdsIn = Body(...)):
     ids = await resolve_product_ids(payload)
     order_annotations, export_order = product_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
-    product_objs = await product_controller.model.filter(id__in=ids).distinct().annotate(**order_annotations).order_by(*export_order)
+    product_objs = (
+        await product_controller.model.filter(id__in=ids)
+        .distinct()
+        .annotate(**order_annotations)
+        .order_by(*export_order)
+    )
 
     category_ids = list({product.category_id for product in product_objs})
     brand_ids = list({product.brand_id for product in product_objs})
-    category_map = {item["id"]: item["name"] for item in await category_controller.model.filter(id__in=category_ids).values("id", "name")}
-    brand_map = {item["id"]: item["name"] for item in await brand_controller.model.filter(id__in=brand_ids).values("id", "name")}
+    category_map = {
+        item["id"]: item["name"]
+        for item in await category_controller.model.filter(id__in=category_ids).values("id", "name")
+    }
+    brand_map = {
+        item["id"]: item["name"] for item in await brand_controller.model.filter(id__in=brand_ids).values("id", "name")
+    }
 
     rows = []
     for product_obj in product_objs:
@@ -263,10 +290,21 @@ async def export_product(payload: DeleteIdsIn = Body(...)):
 
     content = build_xlsx_content(
         sheet_title="好物导出",
-        headers=["好物名称", "好物识别码", "所属品牌", "所属分类", "关联标签", "点击量", "上架状态", "封面图", "更新时间", "好物简介"],
+        headers=[
+            "好物名称",
+            "好物识别码",
+            "所属品牌",
+            "所属分类",
+            "关联标签",
+            "点击量",
+            "上架状态",
+            "封面图",
+            "更新时间",
+            "好物简介",
+        ],
         rows=rows,
     )
-    filename = f'product-export-{payload.scope}-{settings.VERSION}.xlsx'
+    filename = f"product-export-{payload.scope}-{settings.VERSION}.xlsx"
     return StreamingResponse(
         iter([content]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

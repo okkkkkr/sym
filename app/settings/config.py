@@ -1,5 +1,6 @@
 import os
 import typing
+from json import loads as json_loads
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,6 +34,29 @@ class Settings(BaseSettings):
                 return False
         return value
 
+    @field_validator("MEDIA_ORPHAN_CLEANUP_PREFIXES", mode="before")
+    @classmethod
+    def parse_media_orphan_cleanup_prefixes(cls, value):
+        if value in (None, ""):
+            return [
+                "logo/",
+                "contacts/",
+                "home-layout/",
+                "items/images/",
+                "items/videos/",
+            ]
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return []
+            if normalized.startswith("["):
+                parsed = json_loads(normalized)
+                return [str(item).strip() for item in parsed if str(item).strip()]
+            return [item.strip() for item in normalized.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
@@ -44,10 +68,35 @@ class Settings(BaseSettings):
     PRODUCT_IMPORT_CLEANUP_ENABLED: bool = True
     PRODUCT_IMPORT_CLEANUP_RETENTION_HOURS: int = 24
     PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS: int = 3600
-    STORAGE_PROVIDER: str = "qiniu"
+    MEDIA_ORPHAN_CLEANUP_ENABLED: bool = True
+    MEDIA_ORPHAN_CLEANUP_DRY_RUN: bool = True
+    MEDIA_ORPHAN_RETENTION_HOURS: int = 24
+    MEDIA_ORPHAN_CLEANUP_INTERVAL_SECONDS: int = 21600
+    MEDIA_ORPHAN_CLEANUP_BATCH_SIZE: int = 1000
+    MEDIA_ORPHAN_CLEANUP_PREFIXES: typing.List[str] = [
+        "logo/",
+        "contacts/",
+        "home-layout/",
+        "items/images/",
+        "items/videos/",
+    ]
+    STORAGE_DRIVER: str = ""
+    STORAGE_PROVIDER: str = ""
+    MEDIA_UPLOAD_MAX_FILE_SIZE: int = 500 * 1024 * 1024
+    LOCAL_STORAGE_ROOT: str = os.path.join(BASE_DIR, "uploads")
+    LOCAL_STORAGE_PUBLIC_BASE_URL: str = "/uploads"
+    LOCAL_STORAGE_MAX_FILE_SIZE: int = 500 * 1024 * 1024
+    S3_ENDPOINT_URL: str = ""
+    S3_BUCKET: str = ""
+    S3_REGION: str = ""
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_PUBLIC_BASE_URL: str = ""
+    S3_FORCE_PATH_STYLE: bool = False
     QINIU_ACCESS_KEY: str = ""
     QINIU_SECRET_KEY: str = ""
     QINIU_BUCKET: str = ""
+    QINIU_PUBLIC_BASE_URL: str = ""
     QINIU_DOMAIN: str = ""
     QINIU_DOMAIN_SCHEME: str = "https"
     QINIU_REGION: str = ""
@@ -60,9 +109,7 @@ class Settings(BaseSettings):
     CERT_MONITOR_MAIN_CERT_PATH: str = os.path.join(
         BASE_DIR, "certbot", "conf", "live", "symluxlib.com", "fullchain.pem"
     )
-    CERT_MONITOR_STATIC_CERT_PATH: str = os.path.join(
-        BASE_DIR, "certs", "static.symluxlib.com", "fullchain.pem"
-    )
+    CERT_MONITOR_STATIC_CERT_PATH: str = os.path.join(BASE_DIR, "certs", "static.symluxlib.com", "fullchain.pem")
     PUBLIC_SITE_URL: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432

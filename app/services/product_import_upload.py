@@ -126,6 +126,21 @@ class ProductImportUploadService:
         upload_dir = self.get_upload_dir(upload_id)
         self.cleanup_path(upload_dir)
 
+    async def cleanup_task_uploads(self, task_id: int) -> int:
+        cleaned_count = 0
+        base_dir = self._resolve_base_dir()
+        if not base_dir.exists():
+            return cleaned_count
+        for upload_dir in base_dir.iterdir():
+            if not upload_dir.is_dir() or upload_dir.name == "extract":
+                continue
+            meta = self._read_meta(upload_dir / "meta.json")
+            if int(meta.get("task_id") or 0) != int(task_id):
+                continue
+            self.cleanup_path(upload_dir)
+            cleaned_count += 1
+        return cleaned_count
+
     def cleanup_path(self, path: str | Path) -> int:
         cleanup_path = self._ensure_safe_path(path)
         if not cleanup_path.exists():

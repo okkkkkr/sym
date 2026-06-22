@@ -1,16 +1,14 @@
 from collections.abc import Iterable
 
 from app.log import logger
-from app.services.product_media_upload import product_media_upload_service
-from app.services.storage import storage_service
+from app.services.media_storage import media_storage_service
 
 
 def normalize_media_key(value: str | None) -> str:
     normalized_value = str(value or "").strip()
     if not normalized_value:
         return ""
-    extracted_key = product_media_upload_service.extract_object_key(normalized_value)
-    return str(extracted_key or normalized_value).strip().lstrip("/")
+    return media_storage_service.normalize_key(normalized_value)
 
 
 def normalize_media_keys(values: Iterable[str | None]) -> list[str]:
@@ -26,7 +24,7 @@ async def delete_media_keys(values: Iterable[str | None]) -> list[str]:
     deleted_keys = []
     for key in normalize_media_keys(values):
         try:
-            await storage_service.delete_file(key)
+            await media_storage_service.delete(key)
             deleted_keys.append(key)
         except Exception:
             logger.exception("删除媒体资源失败: {}", key)

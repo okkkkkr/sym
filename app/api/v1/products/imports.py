@@ -20,12 +20,14 @@ from app.log import logger
 from app.models import User
 from app.models.enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductImportTaskStatus
 from app.schemas.base import Fail, Success, SuccessExtra
-from app.schemas.product_import import ProductImportTaskActionIn, ProductImportUploadCompleteIn, ProductImportUploadInitIn
+from app.schemas.product_import import (
+    ProductImportTaskActionIn,
+    ProductImportUploadCompleteIn,
+    ProductImportUploadInitIn,
+)
 from app.services import artifact_storage_service, product_import_upload_service, product_import_zip_service
 from app.settings import settings
 from app.tasks.product_import import (
-    get_task_extract_dir,
-    get_task_extract_owner_id,
     run_product_import,
     run_product_import_task,
 )
@@ -58,8 +60,7 @@ PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS = {
 }
 
 PRODUCT_IMPORT_TEMPLATE_HEADERS = [
-    PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS[field]
-    for field in PRODUCT_IMPORT_TEMPLATE_FIELDS
+    PRODUCT_IMPORT_TEMPLATE_HEADER_LABELS[field] for field in PRODUCT_IMPORT_TEMPLATE_FIELDS
 ]
 
 PRODUCT_IMPORT_TEMPLATE_SAMPLE_ROW = [
@@ -112,16 +113,16 @@ def is_celery_worker_available(timeout: float = 0.5) -> bool:
     return bool(ping_result)
 
 
-def dispatch_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
+def dispatch_product_import_task(task_id: int) -> None:
     try:
         if not is_celery_broker_reachable():
             raise ConnectionError(f"celery broker unreachable: {settings.CELERY_BROKER_URL}")
         if not is_celery_worker_available():
             raise ConnectionError("no celery worker available")
-        run_product_import_task.apply_async(args=[task_id, retry_row_nos], retry=False)
+        run_product_import_task.apply_async(args=[task_id], retry=False)
     except Exception as exc:
         logger.warning("dispatch product import task via celery failed, fallback to local async run: {}", exc)
-        asyncio.create_task(run_product_import(task_id, retry_row_nos=retry_row_nos))
+        asyncio.create_task(run_product_import(task_id))
 
 
 def build_product_import_template_content() -> bytes:
@@ -226,7 +227,9 @@ async def upload_product_import_chunk(
     upload_meta = await product_import_upload_service.get_upload_meta(upload_id)
     if upload_meta["created_by"] != current_user.id:
         raise HTTPException(status_code=403, detail="当前用户无权操作该上传任务")
-    result = await product_import_upload_service.save_chunk(upload_id=upload_id, chunk_index=chunk_index, chunk_file=file)
+    result = await product_import_upload_service.save_chunk(
+        upload_id=upload_id, chunk_index=chunk_index, chunk_file=file
+    )
     return Success(data=result)
 
 
@@ -272,11 +275,13 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
         await product_import_task_controller.update(
             id=task_id,
             obj_in={
-                "storage_key": extract_dir,
+                "storage_key": f"product-import/extract/{task_id}",
                 "status": ProductImportTaskStatus.PENDING,
             },
         )
     except Exception as exc:
+        if "extract_dir" in locals():
+            product_import_upload_service.cleanup_path(extract_dir)
         await product_import_task_controller.update(
             id=task_id,
             obj_in={
@@ -292,7 +297,6 @@ async def complete_product_import_upload(payload: ProductImportUploadCompleteIn,
     return Success(
         data={
             "task_id": task_id,
-            "extract_dir": extract_dir,
             "status": ProductImportTaskStatus.PENDING,
         }
     )
@@ -311,13 +315,6 @@ def build_task_search(status: str | None, current_user: User) -> Q:
 async def get_active_product_import_task(current_user: User = DependAuth):
     del current_user
     return Success(data=await get_active_task_summary())
-
-
-def ensure_task_extract_available(task) -> str:
-    extract_dir = get_task_extract_dir(get_task_extract_owner_id(task))
-    if os.path.isdir(extract_dir) and os.path.exists(os.path.join(extract_dir, "product.xlsx")):
-        return extract_dir
-    raise HTTPException(status_code=400, detail="导入解压数据不可用，无法重试")
 
 
 async def build_task_detail_summary(task_id: int) -> dict:
@@ -344,10 +341,7 @@ async def build_task_detail_summary(task_id: int) -> dict:
         {"status": status, "count": count}
         for status, count in sorted(status_counter.items(), key=lambda item: (status_order.get(item[0], 99), item[0]))
     ]
-    error_categories = [
-        {"message": message, "count": count}
-        for message, count in error_counter.most_common()
-    ]
+    error_categories = [{"message": message, "count": count} for message, count in error_counter.most_common()]
     return {
         "status_breakdown": status_breakdown,
         "error_categories": error_categories,
@@ -418,97 +412,9 @@ async def cancel_product_import_task(payload: ProductImportTaskActionIn, current
     }:
         raise HTTPException(status_code=400, detail="当前状态下不可取消任务")
     await product_import_task_controller.cancel_task(payload.task_id, message="任务已由用户取消")
+    if task.status == ProductImportTaskStatus.UPLOADING:
+        await product_import_upload_service.cleanup_task_uploads(payload.task_id)
     return Success(msg="任务取消成功")
-
-
-@router.post("/task/retry", summary="重试好物导入任务")
-async def retry_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
-    task = await product_import_task_controller.get(id=payload.task_id)
-    if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
-    if task.status not in {
-        ProductImportTaskStatus.FAILED,
-        ProductImportTaskStatus.WARN,
-        ProductImportTaskStatus.CANCELED,
-    }:
-        raise HTTPException(status_code=400, detail="当前状态下不可重试任务")
-    ensure_task_extract_available(task)
-    conflict = await build_active_task_conflict(exclude_task_id=task.id)
-    if conflict is not None:
-        return conflict
-
-    result_summary = dict(task.result_summary or {})
-    await product_import_task_item_controller.model.filter(task_id=payload.task_id).delete()
-    await product_import_task_controller.update(
-        id=payload.task_id,
-        obj_in={
-            "status": ProductImportTaskStatus.PENDING,
-            "processed_count": 0,
-            "success_count": 0,
-            "failed_count": 0,
-            "progress": 0,
-            "error_message": None,
-            "result_summary": {
-                key: value
-                for key, value in result_summary.items()
-                if key == "source_extract_task_id"
-            },
-            "error_report_path": None,
-            "started_at": None,
-            "finished_at": None,
-        },
-    )
-    dispatch_product_import_task(payload.task_id)
-    return Success(msg="任务已重新进入导入队列")
-
-
-@router.post("/task/retry-failed", summary="仅重试好物导入失败项")
-async def retry_failed_product_import_task(payload: ProductImportTaskActionIn, current_user: User = DependAuth):
-    task = await product_import_task_controller.get(id=payload.task_id)
-    if not current_user.is_superuser and task.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="当前用户无权操作该任务")
-    if task.status not in {
-        ProductImportTaskStatus.FAILED,
-        ProductImportTaskStatus.WARN,
-        ProductImportTaskStatus.CANCELED,
-    }:
-        raise HTTPException(status_code=400, detail="当前状态下不可重试失败项")
-    ensure_task_extract_available(task)
-    conflict = await build_active_task_conflict()
-    if conflict is not None:
-        return conflict
-
-    failed_row_nos = await product_import_task_item_controller.model.filter(
-        task_id=payload.task_id,
-        status=ProductImportTaskItemStatus.FAILED,
-    ).order_by("row_no", "id").values_list("row_no", flat=True)
-    retry_row_nos = list(dict.fromkeys(failed_row_nos))
-    if not retry_row_nos:
-        raise HTTPException(status_code=400, detail="当前任务没有可重试的失败项")
-
-    retry_task = await product_import_task_controller.create_task(
-        filename=task.filename,
-        storage_key=task.storage_key,
-        created_by=current_user.id,
-        import_strategy=task.import_strategy,
-        status=ProductImportTaskStatus.PENDING,
-    )
-    await product_import_task_controller.update(
-        id=retry_task.id,
-        obj_in={
-            "result_summary": {
-                "source_extract_task_id": get_task_extract_owner_id(task),
-                "retry_source_task_id": task.id,
-                "retry_mode": "failed_only",
-                "retry_row_count": len(retry_row_nos),
-            },
-        },
-    )
-    dispatch_product_import_task(retry_task.id, retry_row_nos=retry_row_nos)
-    return Success(
-        msg="失败项已重新进入导入队列",
-        data={"task_id": retry_task.id, "retry_row_count": len(retry_row_nos)},
-    )
 
 
 @router.get("/task/errors", summary="下载好物导入错误报告")

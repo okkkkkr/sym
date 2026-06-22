@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from app.core.crud import CRUDBase
 from app.models.admin import Contact
 from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_key
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 from app.schemas.contacts import ContactCreate, ContactUpdate
 
 
@@ -22,14 +22,17 @@ class ContactController(CRUDBase[Contact, ContactCreate, ContactUpdate]):
 
     async def update(self, id: int, obj_in) -> Contact:
         contact_obj = await self.get(id=id)
-        removed_keys = diff_removed_media_keys([contact_obj.qr_image_url], [obj_in.get("qr_image_url") if isinstance(obj_in, dict) else obj_in.qr_image_url])
+        removed_keys = diff_removed_media_keys(
+            [contact_obj.qr_image_url],
+            [obj_in.get("qr_image_url") if isinstance(obj_in, dict) else obj_in.qr_image_url],
+        )
         updated_contact = await super().update(id=id, obj_in=obj_in)
         await delete_media_keys(removed_keys)
         return updated_contact
 
     async def serialize(self, contact_obj: Contact, include_preview: bool = False) -> dict:
         data = await contact_obj.to_dict()
-        preview_url = product_media_upload_service.serialize_object_key(data.get("qr_image_url"))
+        preview_url = media_storage_service.serialize_object_key(data.get("qr_image_url"))
         if include_preview:
             data["qr_image_preview_url"] = preview_url
             return data

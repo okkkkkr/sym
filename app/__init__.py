@@ -19,6 +19,9 @@ except ImportError:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.storage import validate_storage_provider
+
+    validate_storage_provider()
     await init_data()
     yield
     await Tortoise.close_connections()

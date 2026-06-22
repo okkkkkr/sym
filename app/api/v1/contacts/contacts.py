@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from tortoise.expressions import Q
 
 from app.controllers.contact import contact_controller
 from app.models.admin import Contact
 from app.models import User
 from app.core.dependency import DependAuth
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 from app.schemas.base import Success, SuccessExtra
 from app.schemas.contacts import ContactCreate, ContactQrUploadTokenIn, ContactUpdate
 
@@ -60,13 +60,14 @@ async def get_contact(id: int = Query(..., description="联系方式ID")):
 @router.post("/qr/upload-token", summary="获取联系方式二维码上传凭证")
 async def get_contact_qr_upload_token(payload: ContactQrUploadTokenIn, current_user: User = DependAuth):
     _ = current_user
-    return Success(
-        data=product_media_upload_service.create_upload_credentials(
-            file_name=payload.file_name,
-            media_type="contact_qr",
-            content_type=payload.content_type,
-        )
-    )
+    _ = payload
+    raise HTTPException(status_code=410, detail="上传凭证接口已废弃，请使用后端中转上传接口")
+
+
+@router.post("/qr/upload", summary="上传联系方式二维码")
+async def upload_contact_qr(file: UploadFile = File(...), current_user: User = DependAuth):
+    _ = current_user
+    return Success(data=await media_storage_service.upload(file, "contact_qr"))
 
 
 @router.post("/create", summary="创建联系方式")

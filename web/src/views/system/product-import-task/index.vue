@@ -98,7 +98,7 @@ function canDownloadErrorReport(row) {
 function taskPhaseDescription(status) {
   if (status === 'uploading') return '正在接收 ZIP 分片'
   if (status === 'pending') return '等待后台开始导入'
-  if (status === 'running') return '正在解析 ZIP、上传素材到七牛并写入数据库'
+  if (status === 'running') return '正在解析 ZIP、上传素材并写入数据库'
   if (status === 'success') return '导入已完成'
   if (status === 'warn') return '导入已完成，存在部分失败项'
   if (status === 'failed') return '导入失败，请查看错误明细'
@@ -132,7 +132,7 @@ const taskSummaryCards = computed(() => {
       key: 'failed',
       title: '失败任务',
       value: failedCount,
-      helper: failedCount ? '建议优先查看错误报告或重试' : '当前列表页无失败任务',
+      helper: failedCount ? '建议优先查看错误报告和失败明细' : '当前列表页无失败任务',
     },
     {
       key: 'latest',
@@ -286,28 +286,6 @@ const columns = computed(() => [
           )
         )
       }
-      // if (canAccess('post/api/v1/product/import/task/retry-failed')) {
-      //   actions.push(
-      //     h(
-      //       NPopconfirm,
-      //       { onPositiveClick: () => handleRetryFailed(row) },
-      //       {
-      //         trigger: () =>
-      //           h(
-      //             NButton,
-      //             {
-      //               size: 'tiny',
-      //               quaternary: true,
-      //               type: 'warning',
-      //               disabled: !canRetryFailedRows(row),
-      //             },
-      //             { default: () => '失败项重试' }
-      //           ),
-      //         default: () => '确认仅重试当前任务的失败项吗？',
-      //       }
-      //     )
-      //   )
-      // }
       if (canAccess('post/api/v1/product/import/task/cancel')) {
         actions.push(
           h(
@@ -629,23 +607,6 @@ onBeforeUnmount(() => {
               >
                 下载错误报告
               </NButton>
-              <!-- <NButton
-                v-if="canAccess('post/api/v1/product/import/task/retry-failed')"
-                type="warning"
-                secondary
-                :disabled="!canRetryFailedRows(currentTask)"
-                @click="handleRetryFailed(currentTask)"
-              >
-                失败项重试
-              </NButton>
-              <NButton
-                v-if="canAccess('post/api/v1/product/import/task/retry')"
-                type="default"
-                :disabled="!canRetryTask(currentTask)"
-                @click="handleRetry(currentTask)"
-              >
-                整任务重试
-              </NButton> -->
             </NSpace>
             <div class="detail-toolbar-text">
               共 {{ detailPagination.total }} 条明细，当前第 {{ detailPagination.page }} 页

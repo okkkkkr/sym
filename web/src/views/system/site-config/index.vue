@@ -186,38 +186,17 @@ async function handleLogoUpload({ file, onError, onFinish, onProgress }) {
       throw new Error('未找到待上传图片')
     }
 
-    const credential = await api.getSiteConfigLogoUploadToken({
-      file_name: file.name,
-      content_type: file.type || '',
-    })
-
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      const formData = new FormData()
-
-      xhr.open('POST', credential.data.upload_url, true)
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return
+    const response = await api.uploadSiteConfigLogo(file.file, {
+      onUploadProgress: (event) => {
+        if (!event.total) return
         onProgress({ percent: Math.round((event.loaded / event.total) * 100) })
-      }
-      xhr.onerror = () => reject(new Error('上传到七牛失败'))
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve()
-          return
-        }
-        reject(new Error('上传到七牛失败'))
-      }
-
-      formData.append('token', credential.data.upload_token)
-      formData.append('key', credential.data.object_key)
-      formData.append('file', file.file)
-      xhr.send(formData)
+      },
     })
+    const result = response.data || {}
 
-    file.url = credential.data.preview_url || credential.data.url
+    file.url = result.url
     file.thumbnailUrl = file.url
-    file.rawUrl = credential.data.object_key
+    file.rawUrl = result.key
     file.resourceState = TRANSIENT_RESOURCE_STATE
     if (!file.name) {
       file.name = getFileNameFromUrl(file.rawUrl)

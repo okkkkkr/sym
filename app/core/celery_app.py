@@ -1,6 +1,9 @@
 from celery import Celery
 
+from app.services.storage import validate_storage_provider
 from app.settings import settings
+
+validate_storage_provider()
 
 
 celery_app = Celery(
@@ -24,7 +27,11 @@ celery_app.conf.update(
         "product-import-cleanup-temp-files": {
             "task": "product_import.cleanup_temp_files",
             "schedule": settings.PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS,
-        }
+        },
+        "media-cleanup-orphan-files": {
+            "task": "media.cleanup_orphan_files",
+            "schedule": settings.MEDIA_ORPHAN_CLEANUP_INTERVAL_SECONDS,
+        },
     },
 )
 

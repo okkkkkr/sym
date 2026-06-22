@@ -12,6 +12,7 @@ from tortoise import Tortoise
 from app.controllers.product import product_controller
 from app.controllers.product_import import product_import_task_controller, product_import_task_item_controller
 from app.core.celery_app import celery_app
+from app.log import logger
 from app.models.admin import Brand, Category, Tag
 from app.models.enums import ProductImportTaskItemStatus, ProductImportTaskStatus
 from app.schemas.product_import import ProductImportMaterialSet, ProductImportParsedRow
@@ -63,37 +64,41 @@ def get_extract_dir(task_id: int) -> str:
     return os.path.join(settings.PRODUCT_IMPORT_TMP_DIR, "extract", str(task_id))
 
 
-def get_task_extract_owner_id(task) -> int:
-    source_task_id = dict(task.result_summary or {}).get("source_extract_task_id")
-    try:
-        return int(source_task_id) if source_task_id else int(task.id)
-    except (TypeError, ValueError):
-        return int(task.id)
-
-
 def get_task_extract_dir(task_id: int) -> str:
     return get_extract_dir(task_id)
 
 
-async def upload_media_files(product_name: str, file_paths: list[str], media_type: str) -> list[dict[str, str]]:
+async def upload_media_files(
+    product_name: str, file_paths: list[str], media_type: str
+) -> tuple[list[dict[str, str]], str | None]:
     uploads: list[dict[str, str]] = []
     media_label = "视频" if media_type == "video" else "图片"
     for file_path in file_paths:
         object_key = build_media_object_key(product_name, file_path, media_type)
         try:
-            await media_storage_service.upload_file(file_path, object_key)
+            await media_storage_service.upload_local_file(file_path, object_key)
         except HTTPException as exc:
-            raise HTTPException(
-                status_code=exc.status_code,
-                detail=f"{media_label}上传失败：{Path(file_path).name}，原因：{exc.detail}",
-            ) from exc
+            return uploads, f"{media_label}上传失败：{Path(file_path).name}，原因：{exc.detail}"
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}",
-            ) from exc
+            return uploads, f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}"
         uploads.append({"path": file_path, "object_key": object_key})
-    return uploads
+    return uploads, None
+
+
+async def rollback_uploaded_media_keys(keys: list[str]) -> str:
+    normalized_keys = [str(key or "").strip() for key in keys if str(key or "").strip()]
+    if not normalized_keys:
+        return ""
+    failed_keys = []
+    for key in normalized_keys:
+        try:
+            await media_storage_service.delete(key)
+        except Exception as exc:
+            logger.exception("回滚导入媒体失败: {}", key)
+            failed_keys.append(f"{key} ({exc})")
+    if not failed_keys:
+        return ""
+    return f"；媒体回滚失败：{'; '.join(failed_keys)}"
 
 
 async def generate_error_report(task_id: int) -> str | None:
@@ -256,7 +261,8 @@ async def cleanup_product_import_temp_files() -> dict:
             task = await product_import_task_controller.model.get_or_none(id=task_id) if task_id else None
             if (
                 task
-                and task.status in {
+                and task.status
+                in {
                     ProductImportTaskStatus.PENDING,
                     ProductImportTaskStatus.RUNNING,
                 }
@@ -272,10 +278,10 @@ async def cleanup_product_import_temp_files() -> dict:
     return stats
 
 
-async def run_product_import(task_id: int, retry_row_nos: list[int] | None = None) -> None:
+async def run_product_import(task_id: int) -> None:
     await ensure_tortoise_initialized()
     task = await product_import_task_controller.get(id=task_id)
-    extract_dir = get_task_extract_dir(get_task_extract_owner_id(task))
+    extract_dir = get_task_extract_dir(task.id)
 
     success_count = 0
     failed_count = 0
@@ -294,15 +300,8 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             raise HTTPException(status_code=404, detail="未找到导入模板文件")
         material_map = product_import_zip_service.scan_materials(extract_dir)
         rows = (await product_import_parser_service.parse(workbook_path)).rows
-        retry_row_no_set = set(retry_row_nos or [])
-        if retry_row_no_set:
-            rows = [row for row in rows if row.row_no in retry_row_no_set]
-            if not rows:
-                raise HTTPException(status_code=400, detail="未找到可重试的失败项")
-
         row_item_map = {
-            item.row_no: item
-            for item in await product_import_task_item_controller.model.filter(task_id=task_id).all()
+            item.row_no: item for item in await product_import_task_item_controller.model.filter(task_id=task_id).all()
         }
         total_rows = len(rows)
         category_cache: dict[str, Category | None] = {}
@@ -395,13 +394,31 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                 )
                 continue
 
+            uploaded_media_keys: list[str] = []
+            media_rolled_back = False
+            product_created = False
             try:
-                image_uploads = await upload_media_files(row.name, material_set.images, "image")
-                video_uploads = await upload_media_files(row.name, material_set.videos, "video")
+                image_uploads, image_upload_error = await upload_media_files(row.name, material_set.images, "image")
+                uploaded_media_keys.extend(uploaded["object_key"] for uploaded in image_uploads)
+                if image_upload_error:
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                    media_rolled_back = True
+                    raise HTTPException(status_code=500, detail=f"{image_upload_error}{rollback_error}")
+                video_uploads, video_upload_error = await upload_media_files(row.name, material_set.videos, "video")
+                uploaded_media_keys.extend(uploaded["object_key"] for uploaded in video_uploads)
+                if video_upload_error:
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                    media_rolled_back = True
+                    raise HTTPException(status_code=500, detail=f"{video_upload_error}{rollback_error}")
                 if (await product_import_task_controller.get(id=task_id)).status == ProductImportTaskStatus.CANCELED:
                     canceled = True
                     processed_count += 1
-                    await product_import_task_item_controller.mark_skipped(item.id, message="任务已由用户取消")
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                    media_rolled_back = True
+                    await product_import_task_item_controller.mark_skipped(
+                        item.id,
+                        message=f"任务已由用户取消{rollback_error}",
+                    )
                     break
                 cover_image_key = next(
                     (
@@ -436,10 +453,17 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
                 try:
                     payload["product_code"] = await product_controller.build_product_code(row.product_code_custom)
                     product = await product_controller.create_with_tags(obj_in=payload, tag_ids=row.tag_ids)
+                    product_created = True
                 except HTTPException as exc:
-                    raise HTTPException(status_code=exc.status_code, detail=f"好物创建失败，原因：{exc.detail}") from exc
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                    media_rolled_back = True
+                    raise HTTPException(
+                        status_code=exc.status_code, detail=f"好物创建失败，原因：{exc.detail}{rollback_error}"
+                    ) from exc
                 except Exception as exc:
-                    raise HTTPException(status_code=500, detail=f"好物创建失败，原因：{exc}") from exc
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                    media_rolled_back = True
+                    raise HTTPException(status_code=500, detail=f"好物创建失败，原因：{exc}{rollback_error}") from exc
 
                 success_count += 1
                 processed_count += 1
@@ -451,11 +475,23 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             except HTTPException as exc:
                 failed_count += 1
                 processed_count += 1
-                await product_import_task_item_controller.mark_failed(item.id, message=str(exc.detail))
+                rollback_error = ""
+                if uploaded_media_keys and not media_rolled_back and not product_created:
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                await product_import_task_item_controller.mark_failed(
+                    item.id,
+                    message=f"{exc.detail}{rollback_error}",
+                )
             except Exception as exc:
                 failed_count += 1
                 processed_count += 1
-                await product_import_task_item_controller.mark_failed(item.id, message=str(exc))
+                rollback_error = ""
+                if uploaded_media_keys and not media_rolled_back and not product_created:
+                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
+                await product_import_task_item_controller.mark_failed(
+                    item.id,
+                    message=f"{exc}{rollback_error}",
+                )
 
             await product_import_task_controller.update_progress(
                 task_id,
@@ -530,10 +566,23 @@ async def run_product_import(task_id: int, retry_row_nos: list[int] | None = Non
             ),
             error_message=str(exc),
         )
+    finally:
+        try:
+            product_import_upload_service.cleanup_path(extract_dir)
+        except Exception as exc:
+            logger.exception("清理导入解压目录失败: {}", extract_dir)
+            current_task = await product_import_task_controller.get(id=task_id)
+            current_error_message = str(current_task.error_message or "").strip()
+            cleanup_message = f"{current_error_message}; 解压目录清理失败：{exc}".strip("; ")
+            await product_import_task_controller.update(
+                id=task_id,
+                obj_in={"error_message": cleanup_message},
+            )
+
 
 @celery_app.task(name="product_import.run")
-def run_product_import_task(task_id: int, retry_row_nos: list[int] | None = None) -> None:
-    asyncio.run(run_in_isolated_tortoise_context(run_product_import(task_id, retry_row_nos=retry_row_nos)))
+def run_product_import_task(task_id: int) -> None:
+    asyncio.run(run_in_isolated_tortoise_context(run_product_import(task_id)))
 
 
 @celery_app.task(name="product_import.cleanup_temp_files")

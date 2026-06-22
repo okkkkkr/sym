@@ -46,7 +46,7 @@ from app.schemas.stats import (
     TrackSiteVisitIn,
 )
 from app.services.certificate_monitor import CERTIFICATE_SPECS, certificate_monitor_service
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 from app.schemas.users import UpdatePassword
 from app.settings import settings
 from app.utils.jwt_utils import create_access_token
@@ -341,7 +341,9 @@ async def track_brand_search(payload: TrackBrandSearchIn):
     if not payload.brand_ids:
         return Success(data={"tracked": False, "brand_count": 0})
 
-    updated_count = await Brand.filter(id__in=payload.brand_ids, is_active=True).update(search_count=F("search_count") + 1)
+    updated_count = await Brand.filter(id__in=payload.brand_ids, is_active=True).update(
+        search_count=F("search_count") + 1
+    )
     return Success(data={"tracked": updated_count > 0, "brand_count": updated_count})
 
 
@@ -372,10 +374,15 @@ async def track_channel_visit(payload: TrackChannelVisitIn):
 
     now = datetime.now(timezone.utc)
     async with in_transaction() as connection:
-        dedup_obj = await ChannelVisitDedup.filter(
-            visitor_id=payload.visitor_id,
-            custom_name=platform_obj.custom_name,
-        ).using_db(connection).select_for_update().first()
+        dedup_obj = (
+            await ChannelVisitDedup.filter(
+                visitor_id=payload.visitor_id,
+                custom_name=platform_obj.custom_name,
+            )
+            .using_db(connection)
+            .select_for_update()
+            .first()
+        )
         if dedup_obj and now - dedup_obj.last_counted_at < CHANNEL_VISIT_WINDOW:
             return Success(data={"tracked": False, "custom_name": platform_obj.custom_name})
 
@@ -479,7 +486,11 @@ def serialize_public_category(category_obj, brand_count: int = 0, product_count:
 
 async def get_public_categories_snapshot():
     category_order_annotations, category_order = category_controller.build_nullable_field_order("order", ["id"])
-    category_objs = await category_controller.model.filter(is_active=True).annotate(**category_order_annotations).order_by(*category_order)
+    category_objs = (
+        await category_controller.model.filter(is_active=True)
+        .annotate(**category_order_annotations)
+        .order_by(*category_order)
+    )
     brand_objs = await brand_controller.model.filter(is_active=True).prefetch_related("categories")
     product_objs = await product_controller.model.filter(status=True).all()
 
@@ -544,9 +555,13 @@ def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
         "detailBlocks": detail_description if isinstance(detail_description, list) else [],
         "category": category_key,
         "brandName": brand_name,
-        "coverImageUrl": product_media_upload_service.serialize_object_key(product_dict.get("cover_image_key")),
-        "imageUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("image_keys") or []],
-        "videoUrls": [product_media_upload_service.serialize_object_key(item) for item in product_dict.get("video_keys") or []],
+        "coverImageUrl": media_storage_service.serialize_object_key(product_dict.get("cover_image_key")),
+        "imageUrls": [
+            media_storage_service.serialize_object_key(item) for item in product_dict.get("image_keys") or []
+        ],
+        "videoUrls": [
+            media_storage_service.serialize_object_key(item) for item in product_dict.get("video_keys") or []
+        ],
         "clickCount": product_dict.get("click_count", 0),
     }
 
@@ -587,9 +602,11 @@ async def get_catalog(
     if tag_ids:
         product_q &= Q(tags__id__in=tag_ids)
     if keyword:
-        product_q &= (Q(name__contains=keyword) | Q(desc__contains=keyword) | Q(tags__name__contains=keyword))
+        product_q &= Q(name__contains=keyword) | Q(desc__contains=keyword) | Q(tags__name__contains=keyword)
 
-    catalog_order_annotations, catalog_order = product_controller.build_nullable_field_order("order", ["-click_count", "-updated_at", "-id"])
+    catalog_order_annotations, catalog_order = product_controller.build_nullable_field_order(
+        "order", ["-click_count", "-updated_at", "-id"]
+    )
     all_products = (
         await Product.filter(category_id=category_obj.id, status=True)
         .prefetch_related("tags")
@@ -598,7 +615,12 @@ async def get_catalog(
     )
     filtered_query = Product.filter(product_q).distinct()
     total = await filtered_query.count()
-    filtered_products = await filtered_query.annotate(**catalog_order_annotations).offset((page - 1) * page_size).limit(page_size).order_by(*catalog_order)
+    filtered_products = (
+        await filtered_query.annotate(**catalog_order_annotations)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .order_by(*catalog_order)
+    )
     brand_order_annotations, brand_order = brand_controller.build_nullable_field_order("order", ["-updated_at", "-id"])
     _, brands = await brand_controller.list(
         page=1,
@@ -608,8 +630,12 @@ async def get_catalog(
         annotations=brand_order_annotations,
     )
     tag_sort_annotations, tag_sort_order = tag_controller.build_nullable_field_order("sort", ["-updated_at", "-id"])
-    hot_brand_objs = await category_obj.hot_brands.filter(is_active=True).annotate(**brand_order_annotations).order_by(*brand_order)
-    hot_tag_objs = await category_obj.hot_tags.filter(is_active=True).annotate(**tag_sort_annotations).order_by(*tag_sort_order)
+    hot_brand_objs = (
+        await category_obj.hot_brands.filter(is_active=True).annotate(**brand_order_annotations).order_by(*brand_order)
+    )
+    hot_tag_objs = (
+        await category_obj.hot_tags.filter(is_active=True).annotate(**tag_sort_annotations).order_by(*tag_sort_order)
+    )
 
     brand_count_map = {}
     tag_count_map = {}
@@ -637,7 +663,9 @@ async def get_catalog(
                 for tag_obj in hot_tag_objs
             ],
             "products": [
-                serialize_catalog_product(await product_obj.to_dict(), category_key, brand_name_map.get(product_obj.brand_id, "SYM Studio"))
+                serialize_catalog_product(
+                    await product_obj.to_dict(), category_key, brand_name_map.get(product_obj.brand_id, "SYM Studio")
+                )
                 for product_obj in filtered_products
             ],
             "total": total,
@@ -655,7 +683,9 @@ async def get_catalog_product(product_id: int):
 
     category_obj, brand_obj = await product_controller.ensure_relations(product_obj.category_id, product_obj.brand_id)
     category_key = normalize_category_key(category_obj.name) or f"category-{category_obj.id}"
-    related_annotations, related_order = product_controller.build_nullable_field_order("order", ["-click_count", "-updated_at", "-id"])
+    related_annotations, related_order = product_controller.build_nullable_field_order(
+        "order", ["-click_count", "-updated_at", "-id"]
+    )
     _, related_candidates = await product_controller.list(
         page=1,
         page_size=20,

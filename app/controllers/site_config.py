@@ -2,10 +2,12 @@ from app.core.crud import CRUDBase
 from app.models.admin import SiteConfig
 from app.schemas.site_configs import SiteConfigUpdate
 from app.services.media_cleanup import delete_media_keys
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 
 
-def serialize_site_config(site_config_obj: SiteConfig | None, include_storage: bool = False, include_key: bool = False) -> dict:
+def serialize_site_config(
+    site_config_obj: SiteConfig | None, include_storage: bool = False, include_key: bool = False
+) -> dict:
     if not site_config_obj:
         data = {
             "logo_url": "",
@@ -20,7 +22,7 @@ def serialize_site_config(site_config_obj: SiteConfig | None, include_storage: b
 
     logo_key = str(site_config_obj.logo_key or "").strip()
     data = {
-        "logo_url": product_media_upload_service.serialize_object_key(logo_key),
+        "logo_url": media_storage_service.serialize_object_key(logo_key),
         "about_title": str(site_config_obj.about_title or "").strip(),
         "about_lines": [str(item).strip() for item in site_config_obj.about_lines or [] if str(item).strip()],
         "footer_disclaimer": str(site_config_obj.footer_disclaimer or "").strip(),

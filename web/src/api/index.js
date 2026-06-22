@@ -58,6 +58,12 @@ async function downloadScopedGetFile(path, filename = 'download.bin') {
   window.URL.revokeObjectURL(url)
 }
 
+function uploadScopedFile(path, file, config = {}) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post(path, formData, config)
+}
+
 export default {
   login: (data) => request.post('/base/access_token', data, { noNeedToken: true }),
   getUserInfo: () => request.get('/base/userinfo'),
@@ -141,7 +147,7 @@ export default {
   createContact: (data = {}) => request.post('/contact/create', data),
   updateContact: (data = {}) => request.post('/contact/update', data),
   deleteContact: (params = {}) => request.delete('/contact/delete', { params }),
-  getContactQrUploadToken: (data = {}) => request.post('/contact/qr/upload-token', data),
+  uploadContactQr: (file, config = {}) => uploadScopedFile('/contact/qr/upload', file, config),
   // platforms
   getPlatformList: (params = {}) => request.get('/platform/list', { params }),
   getPlatformById: (params = {}) => request.get('/platform/get', { params }),
@@ -150,12 +156,13 @@ export default {
   deletePlatform: (params = {}) => request.delete('/platform/delete', { params }),
   // site config
   getSiteConfig: () => request.get('/site-config/get'),
-  getSiteConfigLogoUploadToken: (data = {}) => request.post('/site-config/logo/upload-token', data),
+  uploadSiteConfigLogo: (file, config = {}) =>
+    uploadScopedFile('/site-config/logo/upload', file, config),
   deleteSiteConfigLogo: (data = {}) => request.post('/site-config/logo/delete', data),
   updateSiteConfig: (data = {}) => request.post('/site-config/update', data),
   getHomeLayoutDraft: () => request.get('/home-layout/draft'),
-  getHomeLayoutImageUploadToken: (data = {}) =>
-    request.post('/home-layout/image/upload-token', data),
+  uploadHomeLayoutImage: (file, config = {}) =>
+    uploadScopedFile('/home-layout/image/upload', file, config),
   saveHomeLayoutDraft: (data = {}) => request.post('/home-layout/draft/save', data),
   publishHomeLayout: (data = {}) => request.post('/home-layout/publish', data),
   getCurrentHomeLayout: () => request.get('/home-layout/current'),
@@ -169,7 +176,11 @@ export default {
   updateProduct: (data = {}) => request.post('/product/update', data),
   deleteProduct: (data = {}) => request.delete('/product/delete', { data }),
   exportProduct: (data = {}) => downloadScopedFile('/product/export', data, 'product-export.xlsx'),
-  getProductMediaUploadToken: (data = {}) => request.post('/product/media/upload-token', data),
+  uploadProductMedia: (file, mediaType, config = {}) =>
+    uploadScopedFile('/product/media/upload', file, {
+      ...config,
+      params: { media_type: mediaType },
+    }),
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),
@@ -181,9 +192,6 @@ export default {
   getProductImportTask: (params = {}) => request.get('/product/import/task', { params }),
   getProductImportTaskItems: (params = {}) => request.get('/product/import/task/items', { params }),
   cancelProductImportTask: (data = {}) => request.post('/product/import/task/cancel', data),
-  retryProductImportTask: (data = {}) => request.post('/product/import/task/retry', data),
-  retryFailedProductImportTask: (data = {}) =>
-    request.post('/product/import/task/retry-failed', data),
   downloadProductImportTemplate: () =>
     downloadScopedGetFile('/product/import/template', 'product-import-template.xlsx'),
   downloadProductImportExample: () =>

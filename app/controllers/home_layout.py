@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 from app.models.admin import HomeLayout, HomeLayoutItem, HomeLayoutModule
 from app.schemas.home_layouts import HomeLayoutCommonConfigIn, HomeLayoutDraftSaveIn, LayoutAction
 from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
-from app.services.product_media_upload import product_media_upload_service
+from app.services.media_storage import media_storage_service
 
 
 def normalize_action(action: dict | None) -> dict:
@@ -21,7 +21,9 @@ def normalize_common_config(common_config: dict | None) -> dict:
     return HomeLayoutCommonConfigIn(**(common_config or {})).model_dump()
 
 
-def serialize_home_layout(layout_obj: HomeLayout | None, modules: list[dict] | None = None, published_only: bool = False) -> dict:
+def serialize_home_layout(
+    layout_obj: HomeLayout | None, modules: list[dict] | None = None, published_only: bool = False
+) -> dict:
     if not layout_obj:
         return {
             "page_code": "home",
@@ -51,7 +53,7 @@ def serialize_home_layout(layout_obj: HomeLayout | None, modules: list[dict] | N
                     {
                         "id": item["id"],
                         "sort": item["sort"],
-                        "image": product_media_upload_service.serialize_object_key(item["image"]),
+                        "image": media_storage_service.serialize_object_key(item["image"]),
                         "image_key": item["image"],
                         "title": item["title"],
                         "description": item["description"],
@@ -136,11 +138,7 @@ class HomeLayoutController:
         previous_draft_keys = normalize_media_keys(await self._list_layout_image_keys(draft.id))
         published = await self.get_current(payload.page_code)
         published_keys = normalize_media_keys(await self._list_layout_image_keys(published.id)) if published else []
-        current_draft_keys = normalize_media_keys(
-            item.image
-            for module in payload.modules
-            for item in module.items
-        )
+        current_draft_keys = normalize_media_keys(item.image for module in payload.modules for item in module.items)
         async with in_transaction():
             await HomeLayoutModule.filter(layout_id=draft.id).delete()
             draft.common_config = payload.common_config.model_dump()
@@ -166,7 +164,11 @@ class HomeLayoutController:
                     )
             await draft.save(update_fields=["common_config", "updated_at"])
         await delete_media_keys(
-            [item for item in diff_removed_media_keys(previous_draft_keys, current_draft_keys) if item not in set(published_keys)]
+            [
+                item
+                for item in diff_removed_media_keys(previous_draft_keys, current_draft_keys)
+                if item not in set(published_keys)
+            ]
         )
         return await self.get_draft_data(payload.page_code)
 
@@ -178,7 +180,9 @@ class HomeLayoutController:
             current.common_config, await self._serialize_modules(current.id)
         ):
             raise HTTPException(status_code=400, detail="当前没有可发布的变更")
-        published_version = await HomeLayout.filter(page_code=page_code, status="published").order_by("-version").first()
+        published_version = (
+            await HomeLayout.filter(page_code=page_code, status="published").order_by("-version").first()
+        )
         next_version = (published_version.version if published_version else 0) + 1
         published_at = datetime.now(timezone.utc)
         async with in_transaction():
