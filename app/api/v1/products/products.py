@@ -108,15 +108,19 @@ async def upload_product_media(
         _ = current_user
         return Success(data=await media_storage_service.upload(file, normalized_media_type))
     temp_path, normalized_name, file_size = await video_processing_service.save_temp_upload(file)
-    resource = await video_resource_controller.create(
-        obj_in={
-            "status": "pending",
-            "original_file_name": normalized_name,
-            "original_file_path": temp_path,
-            "original_size": file_size,
-            "created_by": current_user.id,
-        }
-    )
+    try:
+        resource = await video_resource_controller.create(
+            obj_in={
+                "status": "pending",
+                "original_file_name": normalized_name,
+                "original_file_path": temp_path,
+                "original_size": file_size,
+                "created_by": current_user.id,
+            }
+        )
+    except Exception:
+        video_processing_service.cleanup_file(temp_path)
+        raise
     try:
         dispatch_video_processing_task(resource.id)
     except Exception as exc:
