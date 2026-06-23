@@ -18,6 +18,7 @@
 - `api`：FastAPI 接口服务
 - `worker`：Celery 异步任务消费者
 - `beat`：Celery 定时任务调度器
+- `api` / `worker` / `beat` 共用同一套 Python 运行镜像，当前包含 `ffmpeg`，供视频异步压缩使用
 - `postgres`：PostgreSQL 数据库
 - `redis`：Redis 与 Celery Broker
 

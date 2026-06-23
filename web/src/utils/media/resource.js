@@ -4,7 +4,8 @@ export const TRANSIENT_RESOURCE_STATE = 'transient'
 export function normalizeManagedUploadFileList(fileList = []) {
   return fileList.filter(Boolean).map((file) => ({
     ...file,
-    resourceState: file.resourceState || (file.rawUrl ? PERSISTED_RESOURCE_STATE : ''),
+    resourceState:
+      file.resourceState || (file.rawUrl || file.videoResourceId ? PERSISTED_RESOURCE_STATE : ''),
   }))
 }
 
@@ -18,7 +19,7 @@ export function markUploadFilesPersisted(fileList = []) {
 export function collectTransientResourceKeys(fileList = []) {
   return normalizeManagedUploadFileList(fileList)
     .filter((file) => file.resourceState === TRANSIENT_RESOURCE_STATE)
-    .map((file) => String(file.rawUrl || '').trim())
+    .map((file) => String(file.deleteToken || file.rawUrl || '').trim())
     .filter(Boolean)
 }
 
