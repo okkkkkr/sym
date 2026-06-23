@@ -181,6 +181,7 @@ export default {
       ...config,
       params: { media_type: mediaType },
     }),
+  getProductVideoStatus: (params = {}) => request.get('/product/media/video-status', { params }),
   initProductImportUpload: (data = {}) => request.post('/product/import/upload-init', data),
   uploadProductImportChunk: (data, config = {}) =>
     request.post('/product/import/upload-chunk', data, config),

@@ -38,7 +38,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core-apt \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gcc python3-dev curl \
+    && apt-get install -y --no-install-recommends gcc python3-dev curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./

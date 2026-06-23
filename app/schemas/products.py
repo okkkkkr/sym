@@ -12,6 +12,21 @@ class ProductTagOut(BaseModel):
     name: str = Field(..., description="标签名称")
 
 
+class ProductVideoItemIn(BaseModel):
+    type: Literal["key", "resource"] = Field(..., description="视频条目类型")
+    value: str | int = Field(..., description="key 或 resource id")
+
+    @field_validator("value")
+    @classmethod
+    def normalize_value(cls, value: str | int):
+        if isinstance(value, str):
+            normalized_value = value.strip()
+            if not normalized_value:
+                raise ValueError("video item value is required")
+            return normalized_value
+        return value
+
+
 class BaseProduct(BaseModel):
     category_id: int = Field(..., description="类目ID")
     brand_id: int = Field(..., description="品牌ID")
@@ -23,6 +38,7 @@ class BaseProduct(BaseModel):
     cover_image_key: str = Field(..., description="封面图对象 Key")
     image_keys: list[str] = Field(default_factory=list, description="图片对象 Key 列表")
     video_keys: list[str] = Field(default_factory=list, description="视频对象 Key 列表")
+    video_items: list[ProductVideoItemIn] | None = Field(default=None, description="视频条目序列")
     click_count: int = Field(0, description="点击量")
     status: bool = Field(True, description="是否上架")
     order: int | None = Field(None, description="排序")

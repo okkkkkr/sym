@@ -5,17 +5,89 @@ from tortoise.expressions import Q
 from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.product import product_controller
+from app.controllers.product_video_update_plan import (
+    product_video_update_plan_controller,
+)
 from app.controllers.tag import tag_controller
+from app.controllers.video_resource import video_resource_controller
 from app.core.dependency import DependAuth
 from app.models import User
-from app.services.media_cleanup import delete_media_keys, diff_removed_media_keys, normalize_media_keys
-from app.services.media_storage import media_storage_service
-from app.settings import settings
+from app.models.enums import ProductVideoUpdatePlanStatus
 from app.schemas.base import DeleteIdsIn, Success, SuccessExtra
 from app.schemas.products import ProductCreate, ProductMediaUploadTokenIn, ProductUpdate
+from app.schemas.video_resources import VideoUploadAcceptedOut
+from app.services.media_cleanup import (
+    delete_media_keys,
+    diff_removed_media_keys,
+    normalize_media_keys,
+)
+from app.services.media_storage import media_storage_service
+from app.services.product_video_update import product_video_update_service
+from app.services.video_processing import video_processing_service
+from app.settings import settings
+from app.tasks.video_processing import dispatch_video_processing_task
 from app.utils.excel_export import build_xlsx_content
 
 router = APIRouter()
+
+
+async def serialize_video_resource(resource_obj) -> dict:
+    resource_data = await resource_obj.to_dict()
+    return VideoUploadAcceptedOut(
+        id=resource_data["id"],
+        status=str(resource_data.get("status") or ""),
+        storage_provider=str(resource_data.get("storage_provider") or ""),
+        storage_key=str(resource_data.get("storage_key") or ""),
+        public_url=str(resource_data.get("public_url") or ""),
+        original_size=int(resource_data.get("original_size") or 0),
+        compressed_size=resource_data.get("compressed_size"),
+        error_message=str(resource_data.get("error_message") or ""),
+        updated_at=resource_data.get("updated_at"),
+        delete_token=f"video-resource:{resource_data['id']}",
+    ).model_dump()
+
+
+async def build_product_video_items(product_id: int, video_keys: list[str]) -> list[dict]:
+    active_plan = (
+        await product_video_update_plan_controller.model.filter(
+            product_id=product_id,
+            status=ProductVideoUpdatePlanStatus.ACTIVE,
+        )
+        .order_by("-id")
+        .first()
+    )
+    if not active_plan:
+        return [
+            {"type": "key", "value": key, "url": media_storage_service.serialize_object_key(key)} for key in video_keys
+        ]
+
+    resource_ids = [int(item["value"]) for item in (active_plan.items or []) if item.get("type") == "resource"]
+    resources = {
+        resource.id: resource for resource in await video_resource_controller.model.filter(id__in=resource_ids).all()
+    }
+    serialized_items: list[dict] = []
+    for item in active_plan.items or []:
+        if item.get("type") == "key":
+            key = str(item.get("value") or "").strip()
+            if key:
+                serialized_items.append(
+                    {
+                        "type": "key",
+                        "value": key,
+                        "url": media_storage_service.serialize_object_key(key),
+                    }
+                )
+            continue
+        resource = resources.get(int(item["value"]))
+        if resource:
+            serialized_items.append(
+                {
+                    "type": "resource",
+                    "value": resource.id,
+                    "resource": await serialize_video_resource(resource),
+                }
+            )
+    return serialized_items
 
 
 @router.post("/media/upload-token", summary="获取好物媒体上传凭证")
@@ -31,8 +103,47 @@ async def upload_product_media(
     file: UploadFile = File(...),
     current_user: User = DependAuth,
 ):
-    _ = current_user
-    return Success(data=await media_storage_service.upload(file, media_type))
+    normalized_media_type = str(media_type or "").strip().lower()
+    if normalized_media_type != "video":
+        _ = current_user
+        return Success(data=await media_storage_service.upload(file, normalized_media_type))
+    temp_path, normalized_name, file_size = await video_processing_service.save_temp_upload(file)
+    try:
+        resource = await video_resource_controller.create(
+            obj_in={
+                "status": "pending",
+                "original_file_name": normalized_name,
+                "original_file_path": temp_path,
+                "original_size": file_size,
+                "created_by": current_user.id,
+            }
+        )
+    except Exception:
+        video_processing_service.cleanup_file(temp_path)
+        raise
+    try:
+        dispatch_video_processing_task(resource.id)
+    except Exception as exc:
+        video_processing_service.cleanup_file(temp_path)
+        await video_resource_controller.update(
+            id=resource.id,
+            obj_in={
+                "status": "failed",
+                "error_message": str(exc),
+                "original_file_path": "",
+                "compressed_file_path": "",
+            },
+        )
+        raise HTTPException(status_code=503, detail=f"视频处理任务派发失败: {exc}") from exc
+    return Success(data=await serialize_video_resource(resource))
+
+
+@router.get("/media/video-status", summary="查询视频处理状态")
+async def get_video_upload_status(id: int = Query(..., description="视频资源ID"), current_user: User = DependAuth):
+    resource = await video_resource_controller.get(id=id)
+    if not current_user.is_superuser and resource.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="当前用户无权查看该视频资源")
+    return Success(data=await serialize_video_resource(resource))
 
 
 async def serialize_product_payload(product_obj):
@@ -47,6 +158,7 @@ async def serialize_product_payload(product_obj):
     product_data["video_urls"] = [
         media_storage_service.serialize_object_key(item) for item in product_data.get("video_keys") or []
     ]
+    product_data["video_items"] = await build_product_video_items(product_obj.id, product_data.get("video_keys") or [])
     product_data["product_code_custom"] = product_controller.extract_product_code_custom(
         product_data.get("product_code")
     )
@@ -196,35 +308,70 @@ async def get_product(id: int = Query(..., description="好物ID")):
 
 
 @router.post("/create", summary="创建好物")
-async def create_product(product_in: ProductCreate):
+async def create_product(product_in: ProductCreate, current_user: User = DependAuth):
     await product_controller.ensure_relations(product_in.category_id, product_in.brand_id)
     tag_ids = await product_controller.ensure_tag_ids_exist(product_in.tag_ids)
-    payload = product_in.model_dump(exclude={"product_code_custom", "tag_ids"})
+    normalized_video_items, direct_video_keys, resource_ids = (
+        await product_video_update_service.extract_video_submission(
+            video_items=[item.model_dump() for item in (product_in.video_items or [])],
+            legacy_video_keys=product_in.video_keys or [],
+            current_user=current_user,
+            product_id=None,
+        )
+    )
+    payload = product_in.model_dump(exclude={"product_code_custom", "tag_ids", "video_items"})
     payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
+    payload["video_keys"] = direct_video_keys
     payload["product_code"] = await product_controller.build_product_code(product_in.product_code_custom)
-    await product_controller.create_with_tags(obj_in=payload, tag_ids=tag_ids)
+    product = await product_controller.create_with_tags(obj_in=payload, tag_ids=tag_ids)
+    if resource_ids:
+        await product_video_update_service.replace_active_plan(
+            product=product,
+            items=normalized_video_items,
+            previous_video_keys=[],
+            current_user=current_user,
+            resource_ids=resource_ids,
+        )
     return Success(msg="Created Successfully")
 
 
 @router.post("/update", summary="更新好物")
-async def update_product(product_in: ProductUpdate):
+async def update_product(product_in: ProductUpdate, current_user: User = DependAuth):
     await product_controller.ensure_relations(product_in.category_id, product_in.brand_id)
     tag_ids = await product_controller.ensure_tag_ids_exist(product_in.tag_ids)
     current_product = await product_controller.get(id=product_in.id)
     previous_media_keys = normalize_media_keys(
         [current_product.cover_image_key, *(current_product.image_keys or []), *(current_product.video_keys or [])]
     )
-    payload = product_in.model_dump(exclude={"id", "product_code_custom", "tag_ids"})
+    normalized_video_items, direct_video_keys, resource_ids = (
+        await product_video_update_service.extract_video_submission(
+            video_items=[item.model_dump() for item in (product_in.video_items or [])],
+            legacy_video_keys=product_in.video_keys or [],
+            current_user=current_user,
+            product_id=current_product.id,
+        )
+    )
+    payload = product_in.model_dump(exclude={"id", "product_code_custom", "tag_ids", "video_items"})
     payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
+    payload["video_keys"] = current_product.video_keys if resource_ids else direct_video_keys
     payload["product_code"] = await product_controller.build_product_code(
         product_in.product_code_custom,
         current_code=current_product.product_code,
     )
     await product_controller.update_with_tags(id=product_in.id, obj_in=payload, tag_ids=tag_ids)
+    if resource_ids:
+        await product_video_update_service.replace_active_plan(
+            product=current_product,
+            items=normalized_video_items,
+            previous_video_keys=list(current_product.video_keys or []),
+            current_user=current_user,
+            resource_ids=resource_ids,
+        )
+    current_video_keys_for_cleanup = direct_video_keys if not resource_ids else list(current_product.video_keys or [])
     await delete_media_keys(
         diff_removed_media_keys(
             previous_media_keys,
-            [payload.get("cover_image_key"), *(payload.get("image_keys") or []), *(payload.get("video_keys") or [])],
+            [payload.get("cover_image_key"), *(payload.get("image_keys") or []), *current_video_keys_for_cleanup],
         )
     )
     return Success(msg="Updated Successfully")
@@ -244,6 +391,14 @@ async def delete_product(payload: DeleteIdsIn = Body(...)):
             *(product.get("video_keys") or []),
         ]
     )
+    await product_video_update_plan_controller.model.filter(
+        product_id__in=ids,
+        status=ProductVideoUpdatePlanStatus.ACTIVE,
+    ).update(
+        status=ProductVideoUpdatePlanStatus.SUPERSEDED,
+        error_message="关联好物已删除",
+    )
+    await video_resource_controller.model.filter(product_id__in=ids).update(product_id=None, update_plan_id=None)
     deleted_count = await product_controller.remove_many(ids=ids)
     await delete_media_keys(media_keys)
     return Success(msg="Deleted Successfully", data={"deleted": deleted_count})

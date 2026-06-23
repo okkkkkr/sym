@@ -277,6 +277,47 @@ function createUploadFile(url, prefix = 'file', rawUrl = url) {
   )
 }
 
+function createVideoResourceFile(resource, fallbackName = '') {
+  if (!resource?.id) return null
+  return {
+    id: nextUploadFileId('video'),
+    name: fallbackName || `video-${resource.id}.mp4`,
+    status: 'finished',
+    url: '',
+    rawUrl: '',
+    videoResourceId: resource.id,
+    videoStatus: resource.status || 'pending',
+    errorMessage: resource.error_message || '',
+    deleteToken: resource.delete_token || `video-resource:${resource.id}`,
+    resourceState: TRANSIENT_RESOURCE_STATE,
+  }
+}
+
+function createVideoResourceFileFromItem(item = {}) {
+  if (item?.type === 'key') {
+    return createUploadFile(item.url || item.value, 'video', item.value)
+  }
+  if (item?.type === 'resource' && item.resource?.id) {
+    const resource = item.resource
+    return {
+      id: nextUploadFileId('video'),
+      name: getFileNameFromUrl(resource.public_url || `video-${resource.id}.mp4`, 'video'),
+      status: 'finished',
+      url: resource.public_url || '',
+      rawUrl: resource.storage_key || '',
+      videoResourceId: resource.id,
+      videoStatus: resource.status || 'pending',
+      errorMessage: resource.error_message || '',
+      deleteToken: resource.delete_token || `video-resource:${resource.id}`,
+      resourceState:
+        resource.status === 'uploaded' && resource.storage_key
+          ? PERSISTED_RESOURCE_STATE
+          : TRANSIENT_RESOURCE_STATE,
+    }
+  }
+  return null
+}
+
 function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
   return urls
     .map((url, index) => createUploadFile(url, prefix, rawUrls[index] || url))
@@ -320,6 +361,19 @@ function buildUploadKeys(fileList = []) {
   ).map((item) => item.rawUrl)
 }
 
+function buildVideoItems(fileList = []) {
+  return normalizeUploadFileList(fileList, 'video')
+    .filter((item) => !item?.status || item.status === 'finished')
+    .map((item) => {
+      if (item.videoResourceId) {
+        return { type: 'resource', value: Number(item.videoResourceId) }
+      }
+      const key = String(item.rawUrl || item.url || '').trim()
+      return key && !key.startsWith('blob:') ? { type: 'key', value: key } : null
+    })
+    .filter(Boolean)
+}
+
 function syncUploadField(fieldName, prefix) {
   modalForm.value[fieldName] = normalizeUploadFileList(modalForm.value[fieldName], prefix)
 }
@@ -352,10 +406,18 @@ function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
         },
       })
       const result = response.data || {}
-
-      file.rawUrl = result.key
-      file.resourceState = TRANSIENT_RESOURCE_STATE
-      applyUploadedFile(fieldName, prefix, file, result.url)
+      if (mediaType === 'video') {
+        const uploadedFile = createVideoResourceFile(result, file.name || file.file?.name || '')
+        if (!uploadedFile) {
+          throw new Error('视频上传响应无效')
+        }
+        Object.assign(file, uploadedFile)
+        syncUploadField(fieldName, prefix)
+      } else {
+        file.rawUrl = result.key
+        file.resourceState = TRANSIENT_RESOURCE_STATE
+        applyUploadedFile(fieldName, prefix, file, result.url)
+      }
       onFinish()
     } catch (error) {
       syncUploadField(fieldName, prefix)
@@ -579,6 +641,9 @@ function openAddModal() {
 }
 
 function openEditModal(row) {
+  const videoItemFiles = (row.video_items || [])
+    .map((item) => createVideoResourceFileFromItem(item))
+    .filter(Boolean)
   modalAction.value = 'edit'
   modalForm.value = {
     id: row.id,
@@ -596,7 +661,10 @@ function openEditModal(row) {
       row.cover_image_key ? [row.cover_image_key] : []
     ),
     image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_keys || []),
-    video_file_list: buildPresetUploadList(row.video_urls || [], 'video', row.video_keys || []),
+    video_file_list:
+      videoItemFiles.length > 0
+        ? videoItemFiles
+        : buildPresetUploadList(row.video_urls || [], 'video', row.video_keys || []),
     click_count: row.click_count || 0,
     status: row.status,
     order: row.order ?? null,
@@ -662,6 +730,7 @@ function buildProductPayload() {
     cover_image_key: coverKeys[0],
     image_keys: buildUploadKeys(modalForm.value.image_file_list),
     video_keys: buildUploadKeys(modalForm.value.video_file_list),
+    video_items: buildVideoItems(modalForm.value.video_file_list),
     click_count: Number(modalForm.value.click_count || 0),
     status: !!modalForm.value.status,
     order: modalForm.value.order ?? null,
@@ -677,10 +746,18 @@ async function handleSave() {
       modalLoading.value = true
       if (modalAction.value === 'edit') {
         await api.updateProduct({ id: modalForm.value.id, ...payload })
-        $message.success('好物编辑成功')
+        $message.success(
+          payload.video_items?.some((item) => item.type === 'resource')
+            ? '好物编辑成功，视频处理中'
+            : '好物编辑成功'
+        )
       } else {
         await api.createProduct(payload)
-        $message.success('好物新增成功')
+        $message.success(
+          payload.video_items?.some((item) => item.type === 'resource')
+            ? '好物新增成功，视频处理中'
+            : '好物新增成功'
+        )
       }
       modalForm.value.cover_file_list = markUploadFilesPersisted(modalForm.value.cover_file_list)
       modalForm.value.image_file_list = markUploadFilesPersisted(modalForm.value.image_file_list)
@@ -771,6 +848,10 @@ async function toggleStatus(row, nextValue) {
     cover_image_key: row.cover_image_key || '',
     image_keys: row.image_keys || [],
     video_keys: row.video_keys || [],
+    video_items:
+      row.video_items?.length > 0
+        ? row.video_items.map((item) => ({ type: item.type, value: item.value }))
+        : (row.video_keys || []).map((item) => ({ type: 'key', value: item })),
     click_count: row.click_count || 0,
     status: nextValue,
     order: row.order ?? null,

@@ -35,6 +35,7 @@ cd /opt/sym
 ```bash
 sudo -u sym python3 -m venv .venv
 sudo -u sym .venv/bin/pip install -r requirements.txt
+sudo apt-get install -y ffmpeg
 ```
 
 ### 第 4 步：创建后端配置文件

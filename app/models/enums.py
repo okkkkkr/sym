@@ -42,3 +42,17 @@ class ProductImportTaskItemStatus(StrEnum):
 
 class ProductImportStrategy(StrEnum):
     CREATE_ONLY = "create_only"
+
+
+class VideoResourceStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    UPLOADED = "uploaded"
+    FAILED = "failed"
+
+
+class ProductVideoUpdatePlanStatus(StrEnum):
+    ACTIVE = "active"
+    APPLIED = "applied"
+    FAILED = "failed"
+    SUPERSEDED = "superseded"
