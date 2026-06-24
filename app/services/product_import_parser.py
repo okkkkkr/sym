@@ -35,15 +35,8 @@ class ProductImportParserService:
         "detail_text": "详情文本",
         "detail_description_json": "结构化详情JSON",
     }
-    HEADER_ALIASES = {
-        key: [key, label]
-        for key, label in DISPLAY_HEADERS.items()
-    }
-    HEADER_LOOKUP = {
-        alias: key
-        for key, aliases in HEADER_ALIASES.items()
-        for alias in aliases
-    }
+    HEADER_ALIASES = {key: [key, label] for key, label in DISPLAY_HEADERS.items()}
+    HEADER_LOOKUP = {alias: key for key, aliases in HEADER_ALIASES.items() for alias in aliases}
     REQUIRED_HEADERS = ["name", "material_dir", "category_name", "brand_name"]
     STATUS_TRUE_VALUES = {"true", "1", "是", "yes"}
     STATUS_FALSE_VALUES = {"false", "0", "否", "no"}
@@ -51,29 +44,49 @@ class ProductImportParserService:
     async def parse(self, workbook_path: str) -> ProductImportParseResult:
         workbook = load_workbook(workbook_path, read_only=True, data_only=True)
         try:
-            worksheet = workbook[workbook.sheetnames[0]]
-            rows = list(worksheet.iter_rows(values_only=True))
-            if not rows:
-                return ProductImportParseResult(headers=[], rows=[], total_rows=0, valid_rows=0, invalid_rows=0)
-
-            headers = [self._normalize_cell_value(value) for value in rows[0]]
-            header_index = {}
-            for index, header in enumerate(headers):
-                if not header:
-                    continue
-                header_index[self.HEADER_LOOKUP.get(header, header)] = index
-            missing_headers = [header for header in self.REQUIRED_HEADERS if header not in header_index]
-            if missing_headers:
-                missing_labels = [self.DISPLAY_HEADERS.get(header, header) for header in missing_headers]
-                raise HTTPException(status_code=400, detail=f"缺少必填表头: {', '.join(missing_labels)}")
-
+            headers: list[str] = []
             parsed_rows: list[ProductImportParsedRow] = []
+            valid_sheet_count = 0
 
-            for row_no, values in enumerate(rows[1:], start=2):
-                if self._is_empty_row(values):
+            for sheet_name in workbook.sheetnames:
+                worksheet = workbook[sheet_name]
+                rows = list(worksheet.iter_rows(values_only=True))
+                if not rows or all(self._is_empty_row(values) for values in rows):
                     continue
 
-                parsed_rows.append(self._build_row(row_no=row_no, values=values, header_index=header_index))
+                sheet_headers = [self._normalize_cell_value(value) for value in rows[0]]
+                header_index = {}
+                for index, header in enumerate(sheet_headers):
+                    if not header:
+                        continue
+                    header_index[self.HEADER_LOOKUP.get(header, header)] = index
+                missing_headers = [header for header in self.REQUIRED_HEADERS if header not in header_index]
+                if missing_headers:
+                    missing_labels = [self.DISPLAY_HEADERS.get(header, header) for header in missing_headers]
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Sheet「{sheet_name}」缺少必填表头: {', '.join(missing_labels)}",
+                    )
+
+                if not headers:
+                    headers = sheet_headers
+                valid_sheet_count += 1
+
+                for row_no, values in enumerate(rows[1:], start=2):
+                    if self._is_empty_row(values):
+                        continue
+
+                    parsed_rows.append(
+                        self._build_row(
+                            sheet_name=sheet_name,
+                            row_no=row_no,
+                            values=values,
+                            header_index=header_index,
+                        )
+                    )
+
+            if not valid_sheet_count:
+                return ProductImportParseResult(headers=[], rows=[], total_rows=0, valid_rows=0, invalid_rows=0)
 
             return ProductImportParseResult(
                 headers=headers,
@@ -85,7 +98,9 @@ class ProductImportParserService:
         finally:
             workbook.close()
 
-    def _build_row(self, *, row_no: int, values, header_index: dict[str, int]) -> ProductImportParsedRow:
+    def _build_row(
+        self, *, sheet_name: str, row_no: int, values, header_index: dict[str, int]
+    ) -> ProductImportParsedRow:
         name = self._get_cell(values, header_index, "name")
         material_dir = self._get_cell(values, header_index, "material_dir")
         category_name = self._get_cell(values, header_index, "category_name")
@@ -98,7 +113,9 @@ class ProductImportParserService:
         detail_description, detail_error = self._parse_detail_description(detail_text, detail_description_json)
 
         row = ProductImportParsedRow(
+            sheet_name=sheet_name,
             row_no=row_no,
+            row_label=self._build_row_label(sheet_name, row_no),
             name=name,
             material_dir=material_dir,
             category_name=category_name,
@@ -117,6 +134,10 @@ class ProductImportParserService:
         if detail_error:
             row.errors.append(detail_error)
         return row
+
+    @staticmethod
+    def _build_row_label(sheet_name: str, row_no: int) -> str:
+        return f"{sheet_name} 第{row_no}行" if sheet_name else f"第{row_no}行"
 
     @staticmethod
     def _normalize_cell_value(value) -> str:
@@ -184,5 +205,6 @@ class ProductImportParserService:
             return []
         parts = re.split(r"[;；\n]+", value)
         return list(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
+
 
 product_import_parser_service = ProductImportParserService()
