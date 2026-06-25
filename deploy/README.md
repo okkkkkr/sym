@@ -46,6 +46,21 @@ sudo -u sym cp .env.example .env
 
 这一步执行完后，先手动编辑 `/opt/sym/.env`，填入生产环境真实配置，再继续后面的步骤。
 
+如果静态上传资源使用 Cloudflare R2，至少配置：
+
+```env
+STORAGE_DRIVER=r2
+R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+R2_BUCKET=<bucket>
+R2_REGION=auto
+R2_ACCESS_KEY=<access-key-id>
+R2_SECRET_KEY=<secret-access-key>
+R2_PUBLIC_BASE_URL=https://<public-domain>
+R2_FORCE_PATH_STYLE=true
+```
+
+`R2_PUBLIC_BASE_URL` 应使用绑定到 R2 bucket 的公开访问域名。密钥只写入服务器 `.env`，不要提交到仓库。
+
 ### 第 5 步：安装前端构建工具并构建前端
 
 ```bash
@@ -97,6 +112,18 @@ bash deploy/release.sh
 cd /opt/sym
 bash deploy/release.sh --reload-nginx
 ```
+
+### 清理本地历史上传文件
+
+切到 R2 并确认不再需要历史 `/uploads/...` 文件后，可以清空本地上传目录：
+
+```bash
+sudo systemctl stop sym-api sym-celery-worker sym-celery-beat
+sudo -u sym find /opt/sym/uploads -mindepth 1 -exec rm -rf {} +
+sudo systemctl start sym-api sym-celery-worker sym-celery-beat
+```
+
+执行前需要确认数据库中旧的本地图片、视频、Logo、二维码和首页装修图记录已经可以废弃；清空后这些旧 `/uploads/...` URL 会返回 404。
 
 ## 验证方式
 

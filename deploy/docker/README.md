@@ -32,6 +32,21 @@ cp .env.docker.example .env.docker
 
 然后手动编辑 `.env.docker`，填入生产环境真实配置。
 
+如果静态上传资源使用 Cloudflare R2，至少配置：
+
+```env
+STORAGE_DRIVER=r2
+R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+R2_BUCKET=<bucket>
+R2_REGION=auto
+R2_ACCESS_KEY=<access-key-id>
+R2_SECRET_KEY=<secret-access-key>
+R2_PUBLIC_BASE_URL=https://<public-domain>
+R2_FORCE_PATH_STYLE=true
+```
+
+`R2_PUBLIC_BASE_URL` 应使用绑定到 R2 bucket 的公开访问域名。密钥只写入 `.env.docker`，不要提交到仓库。
+
 ### 第 2 步：构建并启动全部服务
 
 ```bash
@@ -97,10 +112,22 @@ docker compose --env-file .env.docker down -v
 
 - `postgres_data`：PostgreSQL 数据
 - `redis_data`：Redis 数据
-- `uploads_data`：上传文件
+- `uploads_data`：本地上传文件；使用 `STORAGE_DRIVER=r2` 后，新媒体和导入错误报告会写入 R2，通常只保留为空卷或历史兼容目录
 - `tmp_data`：商品导入等临时文件
 
-`api`、`worker`、`beat` 共用 `uploads_data` 和 `tmp_data`，这样异步任务才能访问接口服务写入的文件。
+`api`、`worker`、`beat` 共用 `uploads_data` 和 `tmp_data`。R2 模式下仍保留 `uploads_data` 挂载，避免 Nginx `/uploads/` 配置和历史路径突然断裂。
+
+### 清理本地历史上传文件
+
+切到 R2 并确认不再需要历史 `/uploads/...` 文件后，可以只清空 `uploads_data`，不要使用 `down -v`，否则会同时删除数据库和 Redis 卷。
+
+```bash
+docker compose --env-file .env.docker stop api worker beat nginx
+docker compose --env-file .env.docker run --rm --no-deps --entrypoint sh api -lc 'find /opt/sym/uploads -mindepth 1 -exec rm -rf {} +'
+docker compose --env-file .env.docker up -d api worker beat nginx
+```
+
+执行前需要确认数据库中旧的本地图片、视频、Logo、二维码和首页装修图记录已经可以废弃；清空后这些旧 `/uploads/...` URL 会返回 404。
 
 ## 验证方式
 

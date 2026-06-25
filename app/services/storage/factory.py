@@ -5,6 +5,7 @@ from app.settings import settings
 from .base import StorageProvider
 from .local import LocalStorageProvider
 from .qiniu import QiniuProvider
+from .r2 import R2StorageProvider
 from .s3 import S3StorageProvider
 
 
@@ -19,6 +20,8 @@ def get_storage_provider() -> StorageProvider:
         return LocalStorageProvider()
     if driver == "s3":
         return S3StorageProvider()
+    if driver == "r2":
+        return R2StorageProvider()
     if driver == "qiniu":
         return QiniuProvider()
     raise RuntimeError(f"unsupported storage driver: {driver}")

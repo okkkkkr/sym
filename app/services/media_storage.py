@@ -151,6 +151,7 @@ class MediaStorageService:
         parsed = urlsplit(value)
         public_bases = [
             settings.LOCAL_STORAGE_PUBLIC_BASE_URL,
+            settings.R2_PUBLIC_BASE_URL,
             settings.QINIU_PUBLIC_BASE_URL,
             self._legacy_qiniu_public_base_url(),
         ]

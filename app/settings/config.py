@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_PUBLIC_BASE_URL: str = ""
     S3_FORCE_PATH_STYLE: bool = False
+    R2_ENDPOINT_URL: str = ""
+    R2_BUCKET: str = ""
+    R2_REGION: str = "auto"
+    R2_ACCESS_KEY: str = ""
+    R2_SECRET_KEY: str = ""
+    R2_PUBLIC_BASE_URL: str = ""
+    R2_FORCE_PATH_STYLE: bool = True
     QINIU_ACCESS_KEY: str = ""
     QINIU_SECRET_KEY: str = ""
     QINIU_BUCKET: str = ""

@@ -50,8 +50,8 @@ def get_storage_service() -> StorageServiceAdapter:
     return StorageServiceAdapter(get_storage_provider())
 
 
-artifact_storage_service = StorageServiceAdapter(LocalStorageProvider())
 media_storage_service = get_storage_service()
+artifact_storage_service = media_storage_service
 storage_service = media_storage_service
 
 __all__ = [
