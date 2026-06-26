@@ -153,6 +153,7 @@ class ProductImportTaskItemController(CRUDBase[ProductImportTaskItem, dict, dict
         self,
         *,
         task_id: int,
+        sheet_name: str = "",
         row_no: int,
         product_name: str,
         category_name: str | None = None,
@@ -165,6 +166,7 @@ class ProductImportTaskItemController(CRUDBase[ProductImportTaskItem, dict, dict
         return await self.create(
             obj_in={
                 "task_id": task_id,
+                "sheet_name": sheet_name,
                 "row_no": row_no,
                 "product_name": product_name,
                 "category_name": category_name,

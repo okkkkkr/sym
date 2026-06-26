@@ -80,6 +80,10 @@ SAMPLE_PNG_BYTES = b64decode(
 )
 
 
+def build_row_label(sheet_name: str, row_no: int) -> str:
+    return f"{sheet_name} 第{row_no}行" if sheet_name else f"第{row_no}行"
+
+
 def is_celery_broker_reachable(timeout: float = 0.3) -> bool:
     broker_url = settings.CELERY_BROKER_URL
     parsed = urlparse(broker_url)
@@ -394,9 +398,13 @@ async def list_product_import_task_items(
         page=page,
         page_size=page_size,
         search=search,
-        order=["row_no", "id"],
+        order=["sheet_name", "row_no", "id"],
     )
-    data = [await item.to_dict() for item in items]
+    data = []
+    for item in items:
+        item_data = await item.to_dict()
+        item_data["row_label"] = build_row_label(item_data.get("sheet_name", ""), item_data["row_no"])
+        data.append(item_data)
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
 
 

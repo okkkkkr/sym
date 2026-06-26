@@ -27,7 +27,9 @@ class ProductImportUploadCompleteOut(BaseModel):
 
 
 class ProductImportParsedRow(BaseModel):
+    sheet_name: str = Field(default="", description="工作表名称")
     row_no: int = Field(..., description="Excel行号")
+    row_label: str = Field(default="", description="Excel定位标识")
     name: str = Field(..., description="好物名称")
     material_dir: str = Field(default="", description="素材目录")
     category_name: str = Field(default="", description="分类名称")

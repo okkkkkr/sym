@@ -7,7 +7,9 @@ from .enums import ProductImportStrategy, ProductImportTaskItemStatus, ProductIm
 class ProductImportTask(BaseModel, TimestampMixin):
     filename = fields.CharField(max_length=255, description="原始ZIP文件名")
     storage_key = fields.CharField(max_length=500, description="源文件存储定位信息")
-    status = fields.CharEnumField(ProductImportTaskStatus, default=ProductImportTaskStatus.PENDING, description="任务状态")
+    status = fields.CharEnumField(
+        ProductImportTaskStatus, default=ProductImportTaskStatus.PENDING, description="任务状态"
+    )
     total_count = fields.IntField(default=0, description="模板总记录数")
     processed_count = fields.IntField(default=0, description="已处理数量")
     success_count = fields.IntField(default=0, description="成功数量")
@@ -31,6 +33,7 @@ class ProductImportTask(BaseModel, TimestampMixin):
 
 class ProductImportTaskItem(BaseModel, TimestampMixin):
     task = fields.ForeignKeyField("models.ProductImportTask", related_name="items", on_delete=fields.CASCADE)
+    sheet_name = fields.CharField(max_length=255, default="", description="Excel工作表名称", index=True)
     row_no = fields.IntField(description="Excel行号", index=True)
     product_name = fields.CharField(max_length=100, description="好物名称", index=True)
     status = fields.CharEnumField(

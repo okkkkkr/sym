@@ -624,6 +624,7 @@ onBeforeUnmount(() => {
                 <NTag :type="itemStatusTagType(item.status)">{{ statusLabel(item.status) }}</NTag>
               </div>
               <div class="detail-item-grid">
+                <div>位置：{{ item.row_label || '-' }}</div>
                 <div>分类：{{ item.category_name || '-' }}</div>
                 <div>品牌：{{ item.brand_name || '-' }}</div>
                 <div>产品ID：{{ item.product_id || '-' }}</div>

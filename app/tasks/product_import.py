@@ -53,6 +53,14 @@ def sanitize_object_key_part(value: str, fallback: str = "file") -> str:
     return name or fallback
 
 
+def build_row_label(sheet_name: str, row_no: int) -> str:
+    return f"{sheet_name} 第{row_no}行" if sheet_name else f"第{row_no}行"
+
+
+def build_task_item_key(sheet_name: str, row_no: int) -> str:
+    return f"{sheet_name}\n{row_no}"
+
+
 def build_media_object_key(product_name: str, local_path: str, media_type: str) -> str:
     prefix = "items/videos" if media_type == "video" else "items/images"
     product_slug = sanitize_object_key_part(product_name, fallback="product")
@@ -102,13 +110,17 @@ async def rollback_uploaded_media_keys(keys: list[str]) -> str:
 
 
 async def generate_error_report(task_id: int) -> str | None:
-    items = await product_import_task_item_controller.model.filter(task_id=task_id).order_by("row_no", "id")
+    items = await product_import_task_item_controller.model.filter(task_id=task_id).order_by(
+        "sheet_name", "row_no", "id"
+    )
     error_rows = []
     for item in items:
         if item.status != ProductImportTaskItemStatus.FAILED:
             continue
         error_rows.append(
             [
+                item.sheet_name or "",
+                build_row_label(item.sheet_name, item.row_no),
                 item.row_no,
                 item.product_name or "",
                 item.category_name or "",
@@ -124,7 +136,7 @@ async def generate_error_report(task_id: int) -> str | None:
 
     content = build_xlsx_content(
         sheet_title="导入错误报告",
-        headers=["行号", "好物名称", "分类", "品牌", "状态", "结果信息", "重复提示"],
+        headers=["工作表", "位置", "行号", "好物名称", "分类", "品牌", "状态", "结果信息", "重复提示"],
         rows=error_rows,
     )
     os.makedirs(settings.PRODUCT_IMPORT_TMP_DIR, exist_ok=True)
@@ -301,7 +313,8 @@ async def run_product_import(task_id: int) -> None:
         material_map = product_import_zip_service.scan_materials(extract_dir)
         rows = (await product_import_parser_service.parse(workbook_path)).rows
         row_item_map = {
-            item.row_no: item for item in await product_import_task_item_controller.model.filter(task_id=task_id).all()
+            build_task_item_key(item.sheet_name, item.row_no): item
+            for item in await product_import_task_item_controller.model.filter(task_id=task_id).all()
         }
         total_rows = len(rows)
         category_cache: dict[str, Category | None] = {}
@@ -324,10 +337,12 @@ async def run_product_import(task_id: int) -> None:
                 canceled = True
                 break
 
-            item = row_item_map.get(row.row_no)
+            row_key = build_task_item_key(row.sheet_name, row.row_no)
+            item = row_item_map.get(row_key)
             if item is None:
                 item = await product_import_task_item_controller.create_item(
                     task_id=task_id,
+                    sheet_name=row.sheet_name,
                     row_no=row.row_no,
                     product_name=row.name,
                     category_name=row.category_name,
@@ -335,7 +350,7 @@ async def run_product_import(task_id: int) -> None:
                     status=ProductImportTaskItemStatus.PENDING,
                     duplicate_hint=row.duplicate_hint,
                 )
-                row_item_map[row.row_no] = item
+                row_item_map[row_key] = item
             else:
                 item = await product_import_task_item_controller.update(
                     id=item.id,
