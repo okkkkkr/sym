@@ -12,12 +12,8 @@ class AuthControl:
     @classmethod
     async def is_authed(cls, token: str = Header(..., description="token验证")) -> Optional["User"]:
         try:
-            if token == "dev":
-                user = await User.filter().first()
-                user_id = user.id
-            else:
-                decode_data = jwt.decode(token, settings.SECRET_KEY, algorithms=settings.JWT_ALGORITHM)
-                user_id = decode_data.get("user_id")
+            decode_data = jwt.decode(token, settings.SECRET_KEY, algorithms=settings.JWT_ALGORITHM)
+            user_id = decode_data.get("user_id")
             user = await User.filter(id=user_id).first()
             if not user:
                 raise HTTPException(status_code=401, detail="Authentication failed")

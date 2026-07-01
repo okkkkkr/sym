@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from tortoise.expressions import F, Q
 from tortoise.transactions import in_transaction
 
-from app.controllers.brand import brand_controller
 from app.controllers.banner import banner_controller
+from app.controllers.brand import brand_controller
 from app.controllers.category import category_controller
 from app.controllers.contact import contact_controller
 from app.controllers.home_layout import home_layout_controller
@@ -23,6 +23,7 @@ from app.models.admin import (
     Banner,
     Brand,
     Category,
+    CertificateStatus,
     ChannelVisit,
     ChannelVisitDedup,
     Contact,
@@ -32,7 +33,6 @@ from app.models.admin import (
     Platform,
     Product,
     Role,
-    CertificateStatus,
     SiteVisit,
     User,
 )
@@ -45,9 +45,13 @@ from app.schemas.stats import (
     TrackProductClickIn,
     TrackSiteVisitIn,
 )
-from app.services.certificate_monitor import CERTIFICATE_SPECS, certificate_monitor_service
-from app.services.media_storage import media_storage_service
 from app.schemas.users import UpdatePassword
+from app.services.certificate_monitor import (
+    CERTIFICATE_SPECS,
+    certificate_monitor_service,
+)
+from app.services.media_storage import media_storage_service
+from app.services.rate_guard import rate_guard_service
 from app.settings import settings
 from app.utils.jwt_utils import create_access_token
 from app.utils.password import get_password_hash, verify_password
@@ -61,9 +65,52 @@ CONTACT_CLICK_WINDOW = CHANNEL_VISIT_WINDOW
 NATURE_CUSTOM_NAME = "nature"
 
 
+def get_client_identity(request: Request) -> tuple[str, str]:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",", 1)[0].strip()
+    if not client_ip and request.client:
+        client_ip = request.client.host
+    return client_ip or "unknown", request.headers.get("user-agent", "")[:500]
+
+
+def build_login_failure_keys(request: Request, username: str) -> tuple[str, str]:
+    client_ip, _ = get_client_identity(request)
+    normalized_username = str(username or "").strip().lower()
+    return (
+        rate_guard_service.build_key("login-ip", client_ip),
+        rate_guard_service.build_key("login-user", normalized_username),
+    )
+
+
+async def is_duplicate_track(namespace: str, seconds: int, *parts: object) -> bool:
+    return not await rate_guard_service.once_in_window(rate_guard_service.build_key(namespace, *parts), seconds)
+
+
 @router.post("/access_token", summary="获取token")
-async def login_access_token(credentials: CredentialsSchema):
-    user: User = await user_controller.authenticate(credentials)
+async def login_access_token(credentials: CredentialsSchema, request: Request):
+    failure_keys = build_login_failure_keys(request, credentials.username)
+    for key in failure_keys:
+        if await rate_guard_service.is_limited(key, settings.LOGIN_FAILURE_LIMIT):
+            raise HTTPException(status_code=429, detail="登录失败次数过多，请1小时后再试")
+
+    try:
+        user: User = await user_controller.authenticate(credentials)
+    except HTTPException:
+        locked = False
+        for key in failure_keys:
+            locked = (
+                await rate_guard_service.hit_limit(
+                    key,
+                    settings.LOGIN_FAILURE_LIMIT,
+                    settings.LOGIN_FAILURE_WINDOW_SECONDS,
+                )
+                or locked
+            )
+        if locked:
+            raise HTTPException(status_code=429, detail="登录失败次数过多，请1小时后再试")
+        raise
+
+    await rate_guard_service.clear(*failure_keys)
     await user_controller.update_last_login(user.id)
     access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     expire = datetime.now(timezone.utc) + access_token_expires
@@ -328,7 +375,19 @@ async def refresh_certificate_status():
 
 
 @router.post("/track/product-click", summary="上报前台好物点击")
-async def track_product_click(payload: TrackProductClickIn):
+async def track_product_click(payload: TrackProductClickIn, request: Request):
+    client_ip, user_agent = get_client_identity(request)
+    if not await Product.filter(id=payload.product_id, status=True).exists():
+        raise HTTPException(status_code=404, detail="Product not found")
+    if await is_duplicate_track(
+        "track-product-click",
+        settings.TRACK_ACTION_DEDUP_SECONDS,
+        client_ip,
+        user_agent,
+        payload.product_id,
+    ):
+        return Success(data={"tracked": False, "product_id": payload.product_id})
+
     updated_count = await Product.filter(id=payload.product_id, status=True).update(click_count=F("click_count") + 1)
     if not updated_count:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -337,8 +396,17 @@ async def track_product_click(payload: TrackProductClickIn):
 
 
 @router.post("/track/brand-search", summary="上报前台品牌筛选")
-async def track_brand_search(payload: TrackBrandSearchIn):
+async def track_brand_search(payload: TrackBrandSearchIn, request: Request):
     if not payload.brand_ids:
+        return Success(data={"tracked": False, "brand_count": 0})
+    client_ip, user_agent = get_client_identity(request)
+    if await is_duplicate_track(
+        "track-brand-search",
+        settings.TRACK_ACTION_DEDUP_SECONDS,
+        client_ip,
+        user_agent,
+        ",".join(str(item) for item in payload.brand_ids),
+    ):
         return Success(data={"tracked": False, "brand_count": 0})
 
     updated_count = await Brand.filter(id__in=payload.brand_ids, is_active=True).update(
@@ -349,9 +417,18 @@ async def track_brand_search(payload: TrackBrandSearchIn):
 
 @router.post("/track/site-visit", summary="上报站点访问")
 async def track_site_visit(payload: TrackSiteVisitIn, request: Request):
+    if await is_duplicate_track(
+        "track-site-visit",
+        settings.SITE_VISIT_DEDUP_SECONDS,
+        payload.visitor_id,
+        payload.path,
+    ):
+        return Success(data={"tracked": False, "visit_id": None, "visited_at": None})
+
     visit_obj = await SiteVisit.create(
         visitor_id=payload.visitor_id,
         path=payload.path,
+        region=payload.region,
         user_agent=request.headers.get("user-agent", "")[:500],
     )
 
@@ -419,6 +496,13 @@ async def track_contact_click(payload: TrackContactClickIn):
     contact_obj = await Contact.filter(id=payload.contact_id, is_active=True, is_deleted=False).first()
     if not contact_obj:
         raise HTTPException(status_code=404, detail="Contact not found")
+    if await is_duplicate_track(
+        "track-contact-click",
+        settings.TRACK_ACTION_DEDUP_SECONDS,
+        payload.visitor_id,
+        payload.contact_id,
+    ):
+        return Success(data={"tracked": False, "contact_id": contact_obj.id})
 
     now = datetime.now(timezone.utc)
     async with in_transaction() as connection:
