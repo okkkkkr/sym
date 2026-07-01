@@ -8,7 +8,6 @@ from app.core.crud import CRUDBase
 from app.models.admin import Product
 from app.models.admin import Tag
 from app.schemas.products import ProductCreate, ProductUpdate
-from app.utils.product_media import sort_media_keys
 
 from .brand import brand_controller
 from .category import category_controller
@@ -70,7 +69,18 @@ class ProductController(CRUDBase[Product, ProductCreate, ProductUpdate]):
 
     @staticmethod
     def normalize_media_keys(keys: list[str]) -> list[str]:
-        return sort_media_keys(list(dict.fromkeys(item for item in keys if item)))
+        return list(dict.fromkeys(str(item or "").strip() for item in keys if str(item or "").strip()))
+
+    def normalize_product_images(self, cover_image_key: str | None, image_keys: list[str]) -> tuple[str, list[str]]:
+        normalized_image_keys = self.normalize_media_keys(image_keys)
+        if not normalized_image_keys:
+            raise HTTPException(status_code=400, detail="image_keys is required")
+
+        normalized_cover_key = str(cover_image_key or "").strip()
+        if normalized_cover_key not in normalized_image_keys:
+            normalized_cover_key = normalized_image_keys[0]
+
+        return normalized_cover_key, normalized_image_keys
 
     async def create_with_tags(self, obj_in: dict, tag_ids: list[int]) -> Product:
         product = await self.create(obj_in=obj_in)

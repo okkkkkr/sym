@@ -15,9 +15,11 @@ const props = defineProps({
 })
 
 const CARD_WIDTH = 180
-const CARD_HEIGHT = 220
+const NARROW_CARD_WIDTH = 160
+const NARROW_CARD_BREAKPOINT = 428
 const viewportRef = ref(null)
 const availableWidth = ref(0)
+const viewportWidth = ref(0)
 
 let resizeObserver
 
@@ -71,6 +73,10 @@ const isMobileLayout = computed(() => {
 
 const hasProducts = computed(() => props.products.length > 0)
 
+const cardWidth = computed(() =>
+  viewportWidth.value && viewportWidth.value < NARROW_CARD_BREAKPOINT ? NARROW_CARD_WIDTH : CARD_WIDTH
+)
+
 const columnCount = computed(() => {
   const productCount = props.products.length || 1
   const width = availableWidth.value
@@ -79,11 +85,11 @@ const columnCount = computed(() => {
     return 1
   }
 
-   if (isMobileLayout.value) {
+  if (isMobileLayout.value) {
     return Math.min(productCount, 2)
   }
 
-  const columns = Math.floor((width + columnGap.value) / (CARD_WIDTH + columnGap.value))
+  const columns = Math.floor((width + columnGap.value) / (cardWidth.value + columnGap.value))
   return Math.min(productCount, Math.max(1, columns))
 })
 
@@ -94,7 +100,7 @@ const isSingleColumnLayout = computed(() => {
     return false
   }
 
-  return Math.floor((width + columnGap.value) / (CARD_WIDTH + columnGap.value)) <= 1
+  return Math.floor((width + columnGap.value) / (cardWidth.value + columnGap.value)) <= 1
 })
 
 const gridWidth = computed(() => {
@@ -107,11 +113,11 @@ const gridWidth = computed(() => {
   }
 
   if (columnCount.value === 1) {
-    return Math.min(availableWidth.value, CARD_WIDTH)
+    return Math.min(availableWidth.value, cardWidth.value)
   }
 
   const gaps = Math.max(0, columnCount.value - 1) * columnGap.value
-  return columnCount.value * CARD_WIDTH + gaps
+  return columnCount.value * cardWidth.value + gaps
 })
 
 const isSingleColumn = computed(() => columnCount.value === 1)
@@ -143,19 +149,21 @@ const cardStyle = computed(() => {
   // }
 
   return {
-    flexBasis: `${CARD_WIDTH}px`,
-    minWidth: `${CARD_WIDTH}px`,
-    width: `${CARD_WIDTH}px`,
-    maxWidth: `${CARD_WIDTH}px`,
+    flexBasis: `${cardWidth.value}px`,
+    minWidth: `${cardWidth.value}px`,
+    width: `${cardWidth.value}px`,
+    maxWidth: `${cardWidth.value}px`,
   }
 })
 
 function updateAvailableWidth() {
   availableWidth.value = viewportRef.value?.clientWidth ?? 0
+  viewportWidth.value = typeof window === 'undefined' ? 0 : window.innerWidth
 }
 
 onMounted(() => {
   ensureViewportObserver()
+  window.addEventListener('resize', updateAvailableWidth, { passive: true })
 })
 
 watch(hasProducts, async (value) => {
@@ -171,6 +179,7 @@ watch(hasProducts, async (value) => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  window.removeEventListener('resize', updateAvailableWidth)
 })
 
 function productLink(product) {
@@ -239,7 +248,7 @@ function productLink(product) {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  justify-content: flex-start;
+  justify-content: center;
   margin: 0 auto;
 }
 
@@ -320,6 +329,15 @@ function productLink(product) {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   text-overflow: ellipsis;
+}
+
+@media (max-width: 427px) {
+  .product-card {
+    flex-basis: 160px;
+    min-width: 160px;
+    width: 160px;
+    max-width: 160px;
+  }
 }
 
 .shape-rect {

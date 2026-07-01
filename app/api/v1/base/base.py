@@ -630,6 +630,9 @@ def normalize_detail_text(detail_description):
 def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
     detail_text = normalize_detail_text(product_dict.get("detail_description"))
     detail_description = product_dict.get("detail_description")
+    image_keys = product_controller.normalize_media_keys(
+        [*(product_dict.get("image_keys") or []), product_dict.get("cover_image_key")]
+    )
     return {
         "id": str(product_dict["id"]),
         "name": product_dict["name"],
@@ -640,9 +643,7 @@ def serialize_catalog_product(product_dict, category_key: str, brand_name: str):
         "category": category_key,
         "brandName": brand_name,
         "coverImageUrl": media_storage_service.serialize_object_key(product_dict.get("cover_image_key")),
-        "imageUrls": [
-            media_storage_service.serialize_object_key(item) for item in product_dict.get("image_keys") or []
-        ],
+        "imageUrls": [media_storage_service.serialize_object_key(item) for item in image_keys],
         "videoUrls": [
             media_storage_service.serialize_object_key(item) for item in product_dict.get("video_keys") or []
         ],

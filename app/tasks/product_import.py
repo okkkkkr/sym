@@ -443,16 +443,9 @@ async def run_product_import(task_id: int) -> None:
                     ),
                     None,
                 )
-                image_keys = sort_media_keys(
-                    [
-                        uploaded["object_key"]
-                        for uploaded in image_uploads
-                        if os.path.abspath(uploaded["path"]) != os.path.abspath(material_set.cover_image)
-                    ]
-                )
+                image_keys = sort_media_keys([uploaded["object_key"] for uploaded in image_uploads])
                 video_keys = [video_item["object_key"] for video_item in video_uploads]
-                if cover_image_key is None and image_uploads:
-                    cover_image_key = image_uploads[0]["object_key"]
+                cover_image_key, image_keys = product_controller.normalize_product_images(cover_image_key, image_keys)
                 payload = {
                     "category_id": row.category_id,
                     "brand_id": row.brand_id,

@@ -149,7 +149,9 @@ async def get_video_upload_status(id: int = Query(..., description="视频资源
 async def serialize_product_payload(product_obj):
     product_data = await product_obj.to_dict()
     product_data["cover_image_key"] = product_data.get("cover_image_key") or ""
-    product_data["image_keys"] = list(product_data.get("image_keys") or [])
+    product_data["image_keys"] = product_controller.normalize_media_keys(
+        [*(product_data.get("image_keys") or []), product_data.get("cover_image_key")]
+    )
     product_data["video_keys"] = list(product_data.get("video_keys") or [])
     product_data["cover_image_url"] = media_storage_service.serialize_object_key(product_data.get("cover_image_key"))
     product_data["image_urls"] = [
@@ -320,7 +322,9 @@ async def create_product(product_in: ProductCreate, current_user: User = DependA
         )
     )
     payload = product_in.model_dump(exclude={"product_code_custom", "tag_ids", "video_items"})
-    payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
+    payload["cover_image_key"], payload["image_keys"] = product_controller.normalize_product_images(
+        payload.get("cover_image_key"), payload.get("image_keys") or []
+    )
     payload["video_keys"] = direct_video_keys
     payload["product_code"] = await product_controller.build_product_code(product_in.product_code_custom)
     product = await product_controller.create_with_tags(obj_in=payload, tag_ids=tag_ids)
@@ -352,7 +356,9 @@ async def update_product(product_in: ProductUpdate, current_user: User = DependA
         )
     )
     payload = product_in.model_dump(exclude={"id", "product_code_custom", "tag_ids", "video_items"})
-    payload["image_keys"] = product_controller.normalize_media_keys(payload.get("image_keys") or [])
+    payload["cover_image_key"], payload["image_keys"] = product_controller.normalize_product_images(
+        payload.get("cover_image_key"), payload.get("image_keys") or []
+    )
     payload["video_keys"] = current_product.video_keys if resource_ids else direct_video_keys
     payload["product_code"] = await product_controller.build_product_code(
         product_in.product_code_custom,

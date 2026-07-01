@@ -61,8 +61,6 @@ const DEFAULT_DETAIL_DESCRIPTION = JSON.stringify(
 )
 
 let uploadFileSeed = 0
-const mediaIndexPattern = /_(\d+)(?:\.[^.]+)?$/
-const uuidPrefixPattern = /^[0-9a-f]{32}_(.+)$/i
 
 const $table = ref(null)
 const queryItems = ref({})
@@ -78,6 +76,7 @@ const modalLoading = ref(false)
 const exportLoading = ref(false)
 const modalAction = ref('add')
 const modalFormRef = ref(null)
+const coverUpdating = ref(false)
 const statusUpdatingIds = ref([])
 const vPermission = resolveDirective('permission')
 const actionCellStyle =
@@ -101,7 +100,7 @@ const initForm = () => ({
   product_code: '',
   desc: '',
   detail_description_text: DEFAULT_DETAIL_DESCRIPTION,
-  cover_file_list: [],
+  cover_image_key: '',
   image_file_list: [],
   video_file_list: [],
   click_count: 0,
@@ -133,11 +132,11 @@ const rules = {
     validator: () => true,
     trigger: ['input', 'blur'],
   },
-  cover_file_list: {
+  image_file_list: {
     required: true,
     validator: (_, value) => {
       if (buildUploadKeys(value).length) return true
-      return new Error('请上传封面图')
+      return new Error('请上传图片')
     },
     trigger: ['change', 'blur'],
   },
@@ -212,41 +211,8 @@ function getFileNameFromUrl(url, prefix = 'file') {
   return decodeURIComponent(fileName || `${prefix}-${uploadFileSeed}`)
 }
 
-function getMediaSortName(value) {
-  const fileName = getFileNameFromUrl(value)
-  const matched = fileName.match(uuidPrefixPattern)
-  return matched?.[1] || fileName
-}
-
-function getMediaSortIndex(value) {
-  const matched = getMediaSortName(value).match(mediaIndexPattern)
-  return matched ? Number(matched[1]) : null
-}
-
-function compareMediaOrder(left, right) {
-  const leftName = getMediaSortName(left).toLowerCase()
-  const rightName = getMediaSortName(right).toLowerCase()
-  const leftIndex = getMediaSortIndex(left)
-  const rightIndex = getMediaSortIndex(right)
-  if (leftIndex !== null && rightIndex !== null && leftIndex !== rightIndex) {
-    return leftIndex - rightIndex
-  }
-  if (leftIndex !== null) return -1
-  if (rightIndex !== null) return 1
-  return leftName.localeCompare(rightName)
-}
-
-function sortUploadFileList(fileList = []) {
-  return [...fileList].sort((left, right) =>
-    compareMediaOrder(
-      left?.rawUrl || left?.name || left?.url || left?.thumbnailUrl || '',
-      right?.rawUrl || right?.name || right?.url || right?.thumbnailUrl || ''
-    )
-  )
-}
-
 function isImageUploadPrefix(prefix = 'file') {
-  return prefix === 'cover' || prefix === 'image'
+  return prefix === 'image'
 }
 
 function decorateUploadFile(file, prefix = 'file') {
@@ -325,7 +291,7 @@ function buildPresetUploadList(urls = [], prefix = 'file', rawUrls = []) {
 }
 
 function normalizeUploadFileList(fileList = [], prefix = 'file') {
-  const normalizedList = normalizeManagedUploadFileList(
+  return normalizeManagedUploadFileList(
     fileList
       .filter((item) => item?.status !== 'removed')
       .map((item) => {
@@ -334,7 +300,6 @@ function normalizeUploadFileList(fileList = [], prefix = 'file') {
         return objectUrl ? decorateUploadFile({ ...item, url: objectUrl }, prefix) : item
       })
   )
-  return prefix === 'image' ? sortUploadFileList(normalizedList) : normalizedList
 }
 
 async function deleteMediaKeys(keys = []) {
@@ -348,17 +313,67 @@ async function deleteMediaKeys(keys = []) {
 }
 
 function buildUploadKeys(fileList = []) {
-  const uploadKeys = normalizeUploadFileList(fileList)
+  return normalizeUploadFileList(fileList)
     .filter((item) => !item?.status || item.status === 'finished')
     .map((item) => String(item.rawUrl || item.url || item.thumbnailUrl || '').trim())
     .filter((url) => !url.startsWith('blob:'))
     .filter(Boolean)
-  return sortUploadFileList(
-    uploadKeys.map((item) => ({
-      rawUrl: item,
-      name: getFileNameFromUrl(item),
-    }))
-  ).map((item) => item.rawUrl)
+}
+
+function ensureCoverImageKey() {
+  const imageKeys = buildUploadKeys(modalForm.value.image_file_list)
+  if (!imageKeys.length) {
+    modalForm.value.cover_image_key = ''
+    return ''
+  }
+  if (!imageKeys.includes(modalForm.value.cover_image_key)) {
+    modalForm.value.cover_image_key = imageKeys[0]
+  }
+  return modalForm.value.cover_image_key
+}
+
+async function setCoverImage(file) {
+  const imageKey = String(file?.rawUrl || file?.url || file?.thumbnailUrl || '').trim()
+  if (!imageKey || imageKey.startsWith('blob:') || imageKey === modalForm.value.cover_image_key) {
+    return
+  }
+
+  const previousCoverKey = modalForm.value.cover_image_key
+  modalForm.value.cover_image_key = imageKey
+  if (modalAction.value !== 'edit' || !modalForm.value.id) {
+    return
+  }
+
+  try {
+    coverUpdating.value = true
+    await api.updateProduct({ id: modalForm.value.id, ...buildProductPayload() })
+    $message.success('封面已更新')
+    $table.value?.handleSearch()
+  } catch (error) {
+    modalForm.value.cover_image_key = previousCoverKey
+    $message.error(error.message || '封面更新失败')
+  } finally {
+    coverUpdating.value = false
+  }
+}
+
+function isCoverImage(file) {
+  const imageKey = String(file?.rawUrl || file?.url || file?.thumbnailUrl || '').trim()
+  return !!imageKey && imageKey === modalForm.value.cover_image_key
+}
+
+function getCoverSelectableFiles() {
+  return modalForm.value.image_file_list.filter((item) => buildUploadKeys([item]).length)
+}
+
+function buildProductImageUploadList(row) {
+  const imageKeys = [...(row.image_keys || [])]
+  const imageUrls = [...(row.image_urls || [])]
+  if (row.cover_image_key && !imageKeys.includes(row.cover_image_key)) {
+    imageKeys.push(row.cover_image_key)
+    imageUrls.push(row.cover_image_url || row.cover_image_key)
+  }
+  return buildPresetUploadList(imageUrls, 'image', imageKeys)
 }
 
 function buildVideoItems(fileList = []) {
@@ -390,6 +405,9 @@ function applyUploadedFile(fieldName, prefix, file, url) {
   }
   Object.assign(file, decorateUploadFile(file, prefix))
   syncUploadField(fieldName, prefix)
+  if (fieldName === 'image_file_list') {
+    ensureCoverImageKey()
+  }
 }
 
 function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
@@ -429,7 +447,6 @@ function createProductMediaUploadRequest(fieldName, prefix, mediaType) {
   }
 }
 
-const uploadCoverFile = createProductMediaUploadRequest('cover_file_list', 'cover', 'cover')
 const uploadImageFile = createProductMediaUploadRequest('image_file_list', 'image', 'image')
 const uploadVideoFile = createProductMediaUploadRequest('video_file_list', 'video', 'video')
 
@@ -655,12 +672,8 @@ function openEditModal(row) {
     product_code: row.product_code || '',
     desc: row.desc || '',
     detail_description_text: JSON.stringify(row.detail_description || [], null, 2),
-    cover_file_list: buildPresetUploadList(
-      row.cover_image_url ? [row.cover_image_url] : [],
-      'cover',
-      row.cover_image_key ? [row.cover_image_key] : []
-    ),
-    image_file_list: buildPresetUploadList(row.image_urls || [], 'image', row.image_keys || []),
+    cover_image_key: row.cover_image_key || '',
+    image_file_list: buildProductImageUploadList(row),
     video_file_list:
       videoItemFiles.length > 0
         ? videoItemFiles
@@ -669,19 +682,15 @@ function openEditModal(row) {
     status: row.status,
     order: row.order ?? null,
   }
+  ensureCoverImageKey()
   syncModalBrand()
   modalVisible.value = true
-}
-
-function handleCoverFileListChange(fileList) {
-  const removedFiles = findRemovedUploadFiles(modalForm.value.cover_file_list, fileList)
-  modalForm.value.cover_file_list = normalizeUploadFileList(fileList, 'cover')
-  deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
 function handleImageFileListChange(fileList) {
   const removedFiles = findRemovedUploadFiles(modalForm.value.image_file_list, fileList)
   modalForm.value.image_file_list = normalizeUploadFileList(fileList, 'image')
+  ensureCoverImageKey()
   deleteMediaKeys(collectTransientResourceKeys(removedFiles))
 }
 
@@ -714,10 +723,13 @@ function buildProductPayload() {
     throw new Error('detail_description 需要使用 JSON 数组结构')
   }
 
-  const coverKeys = buildUploadKeys(modalForm.value.cover_file_list)
-  if (!coverKeys.length) {
-    throw new Error('请上传封面图')
+  const imageKeys = buildUploadKeys(modalForm.value.image_file_list)
+  if (!imageKeys.length) {
+    throw new Error('请上传图片')
   }
+  const coverImageKey = imageKeys.includes(modalForm.value.cover_image_key)
+    ? modalForm.value.cover_image_key
+    : imageKeys[0]
 
   return {
     category_id: modalForm.value.category_id,
@@ -727,8 +739,8 @@ function buildProductPayload() {
     product_code_custom: String(modalForm.value.product_code_custom || '').trim(),
     desc: modalForm.value.desc.trim(),
     detail_description: detailDescription,
-    cover_image_key: coverKeys[0],
-    image_keys: buildUploadKeys(modalForm.value.image_file_list),
+    cover_image_key: coverImageKey,
+    image_keys: imageKeys,
     video_keys: buildUploadKeys(modalForm.value.video_file_list),
     video_items: buildVideoItems(modalForm.value.video_file_list),
     click_count: Number(modalForm.value.click_count || 0),
@@ -759,7 +771,6 @@ async function handleSave() {
             : '好物新增成功'
         )
       }
-      modalForm.value.cover_file_list = markUploadFilesPersisted(modalForm.value.cover_file_list)
       modalForm.value.image_file_list = markUploadFilesPersisted(modalForm.value.image_file_list)
       modalForm.value.video_file_list = markUploadFilesPersisted(modalForm.value.video_file_list)
       modalVisible.value = false
@@ -846,7 +857,7 @@ async function toggleStatus(row, nextValue) {
     desc: row.desc || '',
     detail_description: row.detail_description || [],
     cover_image_key: row.cover_image_key || '',
-    image_keys: row.image_keys || [],
+    image_keys: [...new Set([...(row.image_keys || []), row.cover_image_key].filter(Boolean))],
     video_keys: row.video_keys || [],
     video_items:
       row.video_items?.length > 0
@@ -867,7 +878,6 @@ function goToProductImport() {
 watch(modalVisible, (visible, wasVisible) => {
   if (visible || !wasVisible) return
   deleteMediaKeys([
-    ...collectTransientResourceKeys(modalForm.value.cover_file_list),
     ...collectTransientResourceKeys(modalForm.value.image_file_list),
     ...collectTransientResourceKeys(modalForm.value.video_file_list),
   ])
@@ -875,7 +885,6 @@ watch(modalVisible, (visible, wasVisible) => {
 
 onBeforeUnmount(() => {
   deleteMediaKeys([
-    ...collectTransientResourceKeys(modalForm.value.cover_file_list),
     ...collectTransientResourceKeys(modalForm.value.image_file_list),
     ...collectTransientResourceKeys(modalForm.value.video_file_list),
   ])
@@ -1019,41 +1028,57 @@ onBeforeUnmount(() => {
                 placeholder="请输入好物简介"
               />
             </NFormItem>
-            <NFormItem label="封面图" path="cover_file_list">
-              <NUpload
-                v-model:file-list="modalForm.cover_file_list"
-                accept="image/*"
-                :custom-request="uploadCoverFile"
-                list-type="image-card"
-                :max="1"
-                @update:file-list="handleCoverFileListChange"
-              >
-                <NIcon v-if="modalForm.cover_file_list.length < 1" size="40">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                    <path
-                      d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
+            <NFormItem label="封面配置">
+              <div class="cover-config">
+                <div v-if="getCoverSelectableFiles().length" class="cover-picker">
+                  <div
+                    v-for="file in getCoverSelectableFiles()"
+                    :key="file.id"
+                    class="cover-picker__item"
+                    :class="{ 'cover-picker__item--active': isCoverImage(file) }"
+                  >
+                    <NImage
+                      :src="file.thumbnailUrl || file.url"
+                      width="72"
+                      height="72"
+                      object-fit="cover"
+                      preview-disabled
                     />
-                  </svg>
-                </NIcon>
-              </NUpload>
+                    <NTag v-if="isCoverImage(file)" type="success" size="small">当前封面</NTag>
+                    <NButton
+                      v-else
+                      size="tiny"
+                      secondary
+                      :disabled="modalLoading || coverUpdating"
+                      :loading="coverUpdating"
+                      @click="setCoverImage(file)"
+                    >
+                      设为封面
+                    </NButton>
+                  </div>
+                </div>
+                <div v-else class="cover-config__empty">暂无图片</div>
+              </div>
             </NFormItem>
             <NFormItem label="图片列表" path="image_file_list">
-              <NUpload
-                v-model:file-list="modalForm.image_file_list"
-                accept="image/*"
-                :custom-request="uploadImageFile"
-                list-type="image-card"
-                multiple
-                @update:file-list="handleImageFileListChange"
-              >
-                <NIcon size="40">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                    <path
-                      d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
-                    />
-                  </svg>
-                </NIcon>
-              </NUpload>
+              <div class="product-image-field">
+                <NUpload
+                  v-model:file-list="modalForm.image_file_list"
+                  accept="image/*"
+                  :custom-request="uploadImageFile"
+                  list-type="image-card"
+                  multiple
+                  @update:file-list="handleImageFileListChange"
+                >
+                  <NIcon size="40">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                      <path
+                        d="M368.5 240H272v-96.5c0-8.8-7.2-16-16-16s-16 7.2-16 16V240h-96.5c-8.8 0-16 7.2-16 16 0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7H240v96.5c0 4.4 1.8 8.4 4.7 11.3 2.9 2.9 6.9 4.7 11.3 4.7 8.8 0 16-7.2 16-16V272h96.5c8.8 0 16-7.2 16-16s-7.2-16-16-16z"
+                      />
+                    </svg>
+                  </NIcon>
+                </NUpload>
+              </div>
             </NFormItem>
             <NFormItem label="视频列表" path="video_file_list">
               <NUpload
@@ -1113,3 +1138,48 @@ onBeforeUnmount(() => {
     />
   </CommonPage>
 </template>
+
+<style scoped>
+.product-image-field {
+  width: 100%;
+}
+
+.cover-config {
+  width: 100%;
+}
+
+.cover-config__empty {
+  display: flex;
+  width: 104px;
+  height: 104px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  color: #999;
+}
+
+.cover-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cover-picker__item {
+  display: flex;
+  width: 96px;
+  min-height: 124px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.cover-picker__item--active {
+  border-color: #18a058;
+  background: #f0f9f4;
+}
+</style>
