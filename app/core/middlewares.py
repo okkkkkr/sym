@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -12,6 +12,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.dependency import AuthControl
 from app.models.admin import AuditLog, User
+from app.services.rate_guard import rate_guard_service
+from app.settings import settings
 
 from .bgtask import BgTasks
 
@@ -44,6 +46,41 @@ class BackGroundTaskMiddleware(SimpleBaseMiddleware):
 
     async def after_request(self, request):
         await BgTasks.execute_tasks()
+
+
+class ApiIpRateLimitMiddleware(BaseHTTPMiddleware):
+    def get_client_ip(self, request: Request) -> str:
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        client_ip = forwarded_for.split(",", 1)[0].strip()
+        if not client_ip and request.client:
+            client_ip = request.client.host
+        return client_ip or "unknown"
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+
+        client_ip = self.get_client_ip(request)
+        block_key = rate_guard_service.build_key("api-ip-block", client_ip)
+        if await rate_guard_service.exists(block_key):
+            return JSONResponse(
+                status_code=429,
+                content={"code": 429, "msg": "请求过于频繁，请稍后再试", "data": None},
+            )
+
+        limit_key = rate_guard_service.build_key("api-ip-rate", client_ip)
+        if await rate_guard_service.hit_window_limit(
+            limit_key,
+            settings.API_IP_RATE_LIMIT,
+            settings.API_IP_RATE_WINDOW_SECONDS,
+        ):
+            await rate_guard_service.block(block_key, settings.API_IP_BLOCK_SECONDS)
+            return JSONResponse(
+                status_code=429,
+                content={"code": 429, "msg": "请求过于频繁，请稍后再试", "data": None},
+            )
+
+        return await call_next(request)
 
 
 class HttpAuditLogMiddleware(BaseHTTPMiddleware):

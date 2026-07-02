@@ -42,6 +42,18 @@ class RateGuardService:
             logger.warning("rate guard limit skipped: key={}, error={}", key, exc)
             return False
 
+    async def hit_window_limit(self, key: str, limit: int, seconds: int) -> bool:
+        if limit <= 0 or seconds <= 0:
+            return False
+        try:
+            count = await self.redis.incr(key)
+            if count == 1:
+                await self.redis.expire(key, seconds)
+            return int(count) > limit
+        except Exception as exc:
+            logger.warning("rate guard window limit skipped: key={}, error={}", key, exc)
+            return False
+
     async def is_limited(self, key: str, limit: int) -> bool:
         if limit <= 0:
             return False
@@ -51,6 +63,21 @@ class RateGuardService:
         except Exception as exc:
             logger.warning("rate guard limit check skipped: key={}, error={}", key, exc)
             return False
+
+    async def exists(self, key: str) -> bool:
+        try:
+            return bool(await self.redis.exists(key))
+        except Exception as exc:
+            logger.warning("rate guard exists check skipped: key={}, error={}", key, exc)
+            return False
+
+    async def block(self, key: str, seconds: int) -> None:
+        if seconds <= 0:
+            return
+        try:
+            await self.redis.set(key, "1", ex=seconds)
+        except Exception as exc:
+            logger.warning("rate guard block skipped: key={}, error={}", key, exc)
 
     async def clear(self, *keys: str) -> None:
         if not keys:

@@ -32,12 +32,19 @@ def create_app() -> FastAPI:
         title=settings.APP_TITLE,
         description=settings.APP_DESCRIPTION,
         version=settings.VERSION,
-        openapi_url="/openapi.json",
+        openapi_url="/openapi.json" if settings.DEBUG else None,
+        docs_url="/docs" if settings.DEBUG else None,
+        redoc_url="/redoc" if settings.DEBUG else None,
         middleware=make_middlewares(),
         lifespan=lifespan,
     )
     register_exceptions(app)
     register_routers(app, prefix="/api")
+
+    @app.get("/health", include_in_schema=False)
+    async def health_check():
+        return {"status": "ok"}
+
     return app
 
 

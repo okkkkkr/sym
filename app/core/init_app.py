@@ -23,7 +23,7 @@ from app.models.admin import Api, Menu, Platform, Role
 from app.schemas.menus import MenuType
 from app.settings.config import settings
 
-from .middlewares import BackGroundTaskMiddleware, HttpAuditLogMiddleware
+from .middlewares import ApiIpRateLimitMiddleware, BackGroundTaskMiddleware, HttpAuditLogMiddleware
 
 
 def make_middlewares():
@@ -35,6 +35,7 @@ def make_middlewares():
             allow_methods=settings.CORS_ALLOW_METHODS,
             allow_headers=settings.CORS_ALLOW_HEADERS,
         ),
+        Middleware(ApiIpRateLimitMiddleware),
         Middleware(BackGroundTaskMiddleware),
         Middleware(
             HttpAuditLogMiddleware,
@@ -43,6 +44,7 @@ def make_middlewares():
                 "/api/v1/base/access_token",
                 "/docs",
                 "/openapi.json",
+                "/health",
             ],
         ),
     ]

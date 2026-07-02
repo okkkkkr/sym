@@ -14,7 +14,18 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "SYM Admin"
     APP_DESCRIPTION: str = "Description"
 
-    CORS_ORIGINS: typing.List = ["*"]
+    CORS_ORIGINS: typing.List[str] = [
+        "https://symluxlib.com",
+        "https://www.symluxlib.com",
+        "https://admin.symluxlib.com",
+        "https://api.symluxlib.com",
+        "http://localhost:6868",
+        "http://127.0.0.1:6868",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:9999",
+        "http://127.0.0.1:9999",
+    ]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: typing.List = ["*"]
     CORS_ALLOW_HEADERS: typing.List = ["*"]
@@ -32,6 +43,22 @@ class Settings(BaseSettings):
                 return True
             if normalized in {"release", "production", "prod", "false", "0", "no", "off"}:
                 return False
+        return value
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return []
+            if normalized.startswith("["):
+                return [str(item).strip() for item in json_loads(normalized) if str(item).strip()]
+            return [item.strip() for item in normalized.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
         return value
 
     @field_validator("MEDIA_ORPHAN_CLEANUP_PREFIXES", mode="before")
@@ -129,6 +156,9 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     LOGIN_FAILURE_LIMIT: int = 5
     LOGIN_FAILURE_WINDOW_SECONDS: int = 3600
+    API_IP_RATE_WINDOW_SECONDS: int = 60
+    API_IP_RATE_LIMIT: int = 300
+    API_IP_BLOCK_SECONDS: int = 900
     SITE_VISIT_DEDUP_SECONDS: int = 1800
     TRACK_ACTION_DEDUP_SECONDS: int = 300
     SECRET_KEY: str = "3488a63e1765035d386f05409663f55c83bfae3b3c61a932744b20ad14244dcf"  # openssl rand -hex 32

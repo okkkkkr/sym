@@ -73,13 +73,10 @@ def get_client_identity(request: Request) -> tuple[str, str]:
     return client_ip or "unknown", request.headers.get("user-agent", "")[:500]
 
 
-def build_login_failure_keys(request: Request, username: str) -> tuple[str, str]:
+def build_login_failure_keys(request: Request, username: str) -> tuple[str]:
     client_ip, _ = get_client_identity(request)
     normalized_username = str(username or "").strip().lower()
-    return (
-        rate_guard_service.build_key("login-ip", client_ip),
-        rate_guard_service.build_key("login-user", normalized_username),
-    )
+    return (rate_guard_service.build_key("login-ip-user", client_ip, normalized_username),)
 
 
 async def is_duplicate_track(namespace: str, seconds: int, *parts: object) -> bool:
