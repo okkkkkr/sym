@@ -17,6 +17,7 @@ tmp/
 uploads/
 certbot/conf/
 certbot/www/
+certs/
 .playwright-cli
 
 .DS_Store
