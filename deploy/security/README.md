@@ -3,7 +3,7 @@
 这些文件只提供项目内防护；脚本默认 dry-run，不会自行修改服务器或 Cloudflare。
 
 1. 使用 `install -m 600 /dev/null .env.docker` 创建配置文件，参考 `app/settings/config.py` 和 Docker 部署文档填写随机 `SECRET_KEY`、数据库及 R2 凭据。生产 Compose 会强制 `ENVIRONMENT=production` 与 `PRODUCT_IMPORT_ENABLED=false`。
-2. 运行 `python scripts/check_product_import_shutdown.py`。只有输出无活跃任务后才能停用 ZIP 导入。
+2. 在项目根目录运行 `python -m scripts.check_product_import_shutdown`。只有输出无活跃任务后才能停用 ZIP 导入。
 3. 使用 `htpasswd -B -c deploy/security/admin.htpasswd <admin-name>` 生成后台外层认证；不要提交该文件。`ADMIN_HTPASSWD_FILE` 会把它作为只读 Compose Secret 挂载到 Nginx。
 4. 执行数据库备份，然后运行 `aerich upgrade`；首次管理员使用 `python scripts/create_admin.py` 创建，不再由启动流程生成默认账户。
 5. 先运行防火墙 dry-run：`python deploy/security/render_nftables.py --ssh-ipv4 <管理员CIDR>`。保留一个已验证的备用 SSH 会话后，才追加 `--apply`。脚本只允许 Cloudflare CIDR 访问 80/443，只允许给定管理员 CIDR 访问 SSH。
