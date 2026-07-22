@@ -83,5 +83,6 @@ COPY --from=admin_web /opt/sym/web/dist /usr/share/nginx/html/admin
 COPY --from=public_web /opt/sym/official-web/dist /usr/share/nginx/html/official
 COPY deploy/docker/nginx.bootstrap.conf /etc/nginx/conf.d/default.conf
 COPY deploy/docker/cloudflare-real-ip.inc /etc/nginx/cloudflare-real-ip.inc
+COPY --chmod=0755 deploy/docker/40-admin-htpasswd.sh /docker-entrypoint.d/40-admin-htpasswd.sh
 
 EXPOSE 80
