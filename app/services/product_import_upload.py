@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,11 +12,14 @@ from app.settings import settings
 
 
 class ProductImportUploadService:
+    upload_id_pattern = re.compile(r"^[0-9a-f]{32}$")
+
     def __init__(self, base_dir: str | None = None):
         self.base_dir = base_dir or settings.PRODUCT_IMPORT_TMP_DIR
 
     def get_upload_dir(self, upload_id: str) -> str:
-        return os.path.join(self.base_dir, upload_id)
+        self._validate_upload_id(upload_id)
+        return str(self._ensure_safe_path(Path(self.base_dir) / upload_id))
 
     def get_chunks_dir(self, upload_id: str) -> str:
         return os.path.join(self.get_upload_dir(upload_id), "chunks")
@@ -47,7 +51,7 @@ class ProductImportUploadService:
             "upload_id": upload_id,
             "task_id": task_id,
             "created_by": created_by,
-            "filename": filename,
+            "filename": Path(filename).name,
             "file_size": file_size,
             "total_chunks": total_chunks,
             "chunk_size": chunk_size,
@@ -211,6 +215,10 @@ class ProductImportUploadService:
 
     def _resolve_base_dir(self) -> Path:
         return Path(self.base_dir).resolve()
+
+    def _validate_upload_id(self, upload_id: str) -> None:
+        if not self.upload_id_pattern.fullmatch(str(upload_id or "")):
+            raise HTTPException(status_code=400, detail="上传 ID 不合法")
 
     def _ensure_safe_path(self, path: str | Path) -> Path:
         safe_path = Path(path).resolve()

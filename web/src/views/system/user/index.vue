@@ -6,8 +6,8 @@ import {
   NCheckboxGroup,
   NForm,
   NFormItem,
-  NImage,
   NInput,
+  NModal,
   NSpace,
   NSwitch,
   NTag,
@@ -35,6 +35,9 @@ defineOptions({ name: '用户管理' })
 const $table = ref(null)
 const queryItems = ref({})
 const vPermission = resolveDirective('permission')
+const resetPasswordVisible = ref(false)
+const resetPasswordLoading = ref(false)
+const resetPasswordForm = ref({ user_id: null, new_password: '', confirm_password: '' })
 
 const {
   modalVisible,
@@ -148,7 +151,6 @@ const columns = [
     title: '操作',
     key: 'actions',
     align: 'center',
-    align: 'center',
     render(row) {
       return [
         withDirectives(
@@ -198,40 +200,21 @@ const columns = [
             default: () => h('div', {}, '确定删除该用户吗?'),
           }
         ),
-        !row.is_superuser && h(
-          NPopconfirm,
-          {
-            onPositiveClick: async () => {
-              try {
-                await api.resetPassword({ user_id: row.id });
-                $message.success('密码已成功重置为123456');
-                await $table.value?.handleSearch();
-              } catch (error) {
-                $message.error('重置密码失败: ' + error.message);
-              }
-            },
-            onNegativeClick: () => {},
-          },
-          {
-            trigger: () =>
-              withDirectives(
-                h(
-                  NButton,
-                  {
-                    size: 'tiny',
-                    quaternary: true,
-                    type: 'warning',
-                    style: 'margin-right: 8px;',
-                  },
-                  {
-                    default: () => '重置密码',
-                  }
-                ),
-                [[vPermission, 'post/api/v1/user/reset_password']]
-              ),
-            default: () => h('div', {}, '确定重置用户密码为123456吗?'),
-          }
-        ),
+        !row.is_superuser &&
+          withDirectives(
+            h(
+              NButton,
+              {
+                size: 'tiny',
+                quaternary: true,
+                type: 'warning',
+                style: 'margin-right: 8px;',
+                onClick: () => openResetPassword(row.id),
+              },
+              { default: () => '重置密码' }
+            ),
+            [[vPermission, 'post/api/v1/user/reset_password']]
+          ),
       ]
     },
   },
@@ -263,6 +246,35 @@ async function handleUpdateDisable(row) {
     row.is_active = row.is_active === false ? true : false
   } finally {
     row.publishing = false
+  }
+}
+
+function openResetPassword(userId) {
+  resetPasswordForm.value = { user_id: userId, new_password: '', confirm_password: '' }
+  resetPasswordVisible.value = true
+}
+
+async function handleResetPassword() {
+  if (resetPasswordForm.value.new_password.length < 12) {
+    $message.error('新密码至少需要 12 位')
+    return
+  }
+  if (resetPasswordForm.value.new_password !== resetPasswordForm.value.confirm_password) {
+    $message.error('两次输入的密码不一致')
+    return
+  }
+  resetPasswordLoading.value = true
+  try {
+    await api.resetPassword({
+      user_id: resetPasswordForm.value.user_id,
+      new_password: resetPasswordForm.value.new_password,
+    })
+    resetPasswordVisible.value = false
+    $message.success('密码已重置，用户现有登录令牌已撤销')
+  } catch (error) {
+    $message.error(`重置密码失败: ${error.message}`)
+  } finally {
+    resetPasswordLoading.value = false
   }
 }
 
@@ -314,6 +326,11 @@ const validateAddUser = {
       required: true,
       message: '请输入密码',
       trigger: ['input', 'blur', 'change'],
+    },
+    {
+      min: 12,
+      message: '密码至少需要 12 位',
+      trigger: ['input', 'blur'],
     },
   ],
   confirmPassword: [
@@ -484,5 +501,39 @@ const validateAddUser = {
       </CommonPage>
     </NLayoutContent>
   </NLayout>
+  <NModal
+    v-model:show="resetPasswordVisible"
+    preset="card"
+    title="重置用户密码"
+    style="width: 480px"
+    :mask-closable="false"
+  >
+    <NForm label-placement="left" :label-width="90">
+      <NFormItem label="新密码">
+        <NInput
+          v-model:value="resetPasswordForm.new_password"
+          type="password"
+          show-password-on="mousedown"
+          placeholder="至少 12 位"
+        />
+      </NFormItem>
+      <NFormItem label="确认密码">
+        <NInput
+          v-model:value="resetPasswordForm.confirm_password"
+          type="password"
+          show-password-on="mousedown"
+          placeholder="再次输入新密码"
+        />
+      </NFormItem>
+    </NForm>
+    <template #footer>
+      <NSpace justify="end">
+        <NButton @click="resetPasswordVisible = false">取消</NButton>
+        <NButton type="primary" :loading="resetPasswordLoading" @click="handleResetPassword">
+          确认重置
+        </NButton>
+      </NSpace>
+    </template>
+  </NModal>
   <!-- 业务页面 -->
 </template>

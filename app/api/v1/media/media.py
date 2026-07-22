@@ -6,7 +6,7 @@ from app.models import User
 from app.models.enums import VideoResourceStatus
 from app.schemas.base import Success
 from app.schemas.media import MediaDeleteIn
-from app.services.media_cleanup import delete_media_keys
+from app.services.media_cleanup import delete_owned_transient_media_keys
 from app.services.media_storage import media_storage_service
 from app.services.video_processing import video_processing_service
 
@@ -48,5 +48,5 @@ async def delete_media(payload: MediaDeleteIn, current_user: User = DependAuth):
             },
         )
 
-    deleted_keys = await delete_media_keys(deleted_keys)
+    deleted_keys = await delete_owned_transient_media_keys(deleted_keys, current_user.id)
     return Success(msg="Deleted Successfully", data={"deleted_keys": deleted_keys})

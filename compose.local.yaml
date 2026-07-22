@@ -1,4 +1,19 @@
 services:
+  api:
+    environment:
+      ENVIRONMENT: development
+      PRODUCT_IMPORT_ENABLED: "true"
+
+  worker:
+    environment:
+      ENVIRONMENT: development
+      PRODUCT_IMPORT_ENABLED: "true"
+
+  beat:
+    environment:
+      ENVIRONMENT: development
+      PRODUCT_IMPORT_ENABLED: "true"
+
   nginx:
     build:
       args:
@@ -10,3 +25,7 @@ services:
     volumes: !override
       - uploads_data:/usr/share/nginx/uploads:ro
       - ./deploy/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+secrets:
+  admin_htpasswd:
+    file: ./deploy/security/admin.htpasswd.example

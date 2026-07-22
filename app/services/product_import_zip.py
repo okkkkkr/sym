@@ -31,6 +31,8 @@ class ProductImportZipService:
 
         with zipfile.ZipFile(zip_path, "r") as zip_file:
             entries = self._build_zip_entries(zip_file)
+            if len(entries) > settings.PRODUCT_IMPORT_MAX_ENTRIES:
+                raise HTTPException(status_code=400, detail="ZIP 条目数量超出系统限制")
             wrapper_dir = self._detect_wrapper_dir(entries)
             for info, parts, is_directory in entries:
                 normalized_parts = self._strip_wrapper(parts, wrapper_dir)
@@ -47,6 +49,15 @@ class ProductImportZipService:
                 total_uncompressed_size += info.file_size
                 if info.file_size <= 0:
                     raise HTTPException(status_code=400, detail="ZIP 包内存在空文件")
+                if info.file_size > settings.PRODUCT_IMPORT_MAX_ENTRY_SIZE:
+                    raise HTTPException(status_code=400, detail="ZIP 包内单个文件大小超出系统限制")
+                if total_uncompressed_size > settings.PRODUCT_IMPORT_MAX_UNCOMPRESSED_SIZE:
+                    raise HTTPException(status_code=400, detail="ZIP 解压总体积超出系统限制")
+                if (
+                    info.compress_size <= 0
+                    or info.file_size / info.compress_size > settings.PRODUCT_IMPORT_MAX_COMPRESSION_RATIO
+                ):
+                    raise HTTPException(status_code=400, detail="ZIP 包内文件压缩比异常")
 
                 if len(normalized_parts) == 1:
                     if normalized_parts[0] == "product.xlsx":
@@ -69,33 +80,53 @@ class ProductImportZipService:
         }
 
     def extract_to_temp(self, zip_path: str, task_id: int) -> str:
+        validation = self.validate_zip(zip_path)
         extract_dir = os.path.join(settings.PRODUCT_IMPORT_TMP_DIR, "extract", str(task_id))
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
         os.makedirs(extract_dir, exist_ok=True)
 
-        with zipfile.ZipFile(zip_path, "r") as zip_file:
-            entries = self._build_zip_entries(zip_file)
-            wrapper_dir = self._detect_wrapper_dir(entries)
-            base_path = Path(extract_dir).resolve()
+        required_space = validation["total_uncompressed_size"] + settings.PRODUCT_IMPORT_DISK_RESERVE_SIZE
+        if shutil.disk_usage(extract_dir).free < required_space:
+            shutil.rmtree(extract_dir)
+            raise HTTPException(status_code=507, detail="磁盘可用空间不足，无法安全解压")
 
-            for info, parts, is_directory in entries:
-                normalized_parts = self._strip_wrapper(parts, wrapper_dir)
-                if not normalized_parts:
-                    continue
+        extracted_size = 0
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zip_file:
+                entries = self._build_zip_entries(zip_file)
+                wrapper_dir = self._detect_wrapper_dir(entries)
+                base_path = Path(extract_dir).resolve()
 
-                target_path = Path(extract_dir).joinpath(*normalized_parts)
-                resolved_target = target_path.resolve()
-                if not str(resolved_target).startswith(str(base_path)):
-                    raise HTTPException(status_code=400, detail="ZIP 解压路径不安全")
+                for info, parts, is_directory in entries:
+                    normalized_parts = self._strip_wrapper(parts, wrapper_dir)
+                    if not normalized_parts:
+                        continue
 
-                if is_directory:
-                    resolved_target.mkdir(parents=True, exist_ok=True)
-                    continue
+                    resolved_target = Path(extract_dir).joinpath(*normalized_parts).resolve()
+                    try:
+                        resolved_target.relative_to(base_path)
+                    except ValueError as exc:
+                        raise HTTPException(status_code=400, detail="ZIP 解压路径不安全") from exc
 
-                resolved_target.parent.mkdir(parents=True, exist_ok=True)
-                with zip_file.open(info, "r") as source, open(resolved_target, "wb") as target:
-                    shutil.copyfileobj(source, target)
+                    if is_directory:
+                        resolved_target.mkdir(parents=True, exist_ok=True)
+                        continue
+
+                    resolved_target.parent.mkdir(parents=True, exist_ok=True)
+                    entry_size = 0
+                    with zip_file.open(info, "r") as source, open(resolved_target, "wb") as target:
+                        while chunk := source.read(1024 * 1024):
+                            entry_size += len(chunk)
+                            extracted_size += len(chunk)
+                            if entry_size > settings.PRODUCT_IMPORT_MAX_ENTRY_SIZE:
+                                raise HTTPException(status_code=400, detail="ZIP 解压单文件体积超出系统限制")
+                            if extracted_size > settings.PRODUCT_IMPORT_MAX_UNCOMPRESSED_SIZE:
+                                raise HTTPException(status_code=400, detail="ZIP 实际解压体积超出系统限制")
+                            target.write(chunk)
+        except Exception:
+            shutil.rmtree(extract_dir, ignore_errors=True)
+            raise
 
         return extract_dir
 
@@ -140,6 +171,8 @@ class ProductImportZipService:
     def _build_zip_entries(self, zip_file: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, list[str], bool]]:
         entries: list[tuple[zipfile.ZipInfo, list[str], bool]] = []
         for info in zip_file.infolist():
+            if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                raise HTTPException(status_code=400, detail="ZIP 包内不允许符号链接")
             filename = info.filename
             normalized = filename.replace("\\", "/").strip()
             if not normalized:

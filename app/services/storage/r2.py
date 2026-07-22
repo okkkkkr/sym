@@ -1,8 +1,10 @@
 import asyncio
 from datetime import timezone
+from uuid import uuid4
 
 from fastapi import HTTPException
 
+from app.log import logger
 from app.settings import settings
 
 from .base import (
@@ -50,7 +52,9 @@ class R2StorageProvider(StorageProvider):
                 ExtraArgs=extra_args,
             )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"R2 上传失败: {exc}") from exc
+            error_id = uuid4().hex
+            logger.exception("R2 upload failed: error_id={}, key={}", error_id, options.key)
+            raise HTTPException(status_code=502, detail=f"对象存储操作失败（错误编号：{error_id}）") from exc
         return UploadResult(
             key=options.key,
             url=self.get_public_url(options.key),
@@ -63,7 +67,9 @@ class R2StorageProvider(StorageProvider):
         try:
             await asyncio.to_thread(self._client().delete_object, Bucket=self.bucket, Key=str(key or "").lstrip("/"))
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"R2 删除失败: {exc}") from exc
+            error_id = uuid4().hex
+            logger.exception("R2 delete failed: error_id={}, key={}", error_id, key)
+            raise HTTPException(status_code=502, detail=f"对象存储操作失败（错误编号：{error_id}）") from exc
 
     async def list_objects(self, prefix: str = "", batch_size: int = 1000) -> list[StorageObject]:
         def fetch_objects():
@@ -102,7 +108,9 @@ class R2StorageProvider(StorageProvider):
         try:
             return await asyncio.to_thread(fetch_objects)
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"R2 列举对象失败: {exc}") from exc
+            error_id = uuid4().hex
+            logger.exception("R2 list failed: error_id={}, prefix={}", error_id, prefix)
+            raise HTTPException(status_code=502, detail=f"对象存储操作失败（错误编号：{error_id}）") from exc
 
     def get_public_url(self, key: str) -> str:
         return f"{self.public_base_url}/{str(key or '').lstrip('/')}"

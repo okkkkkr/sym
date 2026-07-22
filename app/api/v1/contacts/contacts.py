@@ -66,8 +66,7 @@ async def get_contact_qr_upload_token(payload: ContactQrUploadTokenIn, current_u
 
 @router.post("/qr/upload", summary="上传联系方式二维码")
 async def upload_contact_qr(file: UploadFile = File(...), current_user: User = DependAuth):
-    _ = current_user
-    return Success(data=await media_storage_service.upload(file, "contact_qr"))
+    return Success(data=await media_storage_service.upload(file, "contact_qr", current_user.id))
 
 
 @router.post("/create", summary="创建联系方式")

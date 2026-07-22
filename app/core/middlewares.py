@@ -6,7 +6,8 @@ from typing import Any, AsyncGenerator
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.middleware.base import (BaseHTTPMiddleware,
+                                       RequestResponseEndpoint)
 from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -14,6 +15,7 @@ from app.core.dependency import AuthControl
 from app.models.admin import AuditLog, User
 from app.services.rate_guard import rate_guard_service
 from app.settings import settings
+from app.utils.client_ip import get_client_ip
 
 from .bgtask import BgTasks
 
@@ -49,18 +51,11 @@ class BackGroundTaskMiddleware(SimpleBaseMiddleware):
 
 
 class ApiIpRateLimitMiddleware(BaseHTTPMiddleware):
-    def get_client_ip(self, request: Request) -> str:
-        forwarded_for = request.headers.get("x-forwarded-for", "")
-        client_ip = forwarded_for.split(",", 1)[0].strip()
-        if not client_ip and request.client:
-            client_ip = request.client.host
-        return client_ip or "unknown"
-
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
 
-        client_ip = self.get_client_ip(request)
+        client_ip = get_client_ip(request)
         block_key = rate_guard_service.build_key("api-ip-block", client_ip)
         if await rate_guard_service.exists(block_key):
             return JSONResponse(
@@ -172,7 +167,17 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
 
     def sanitize_log_value(self, value: Any) -> Any:
         if isinstance(value, dict):
-            return {self.sanitize_log_value(key): self.sanitize_log_value(item) for key, item in value.items()}
+            sanitized = {}
+            for key, item in value.items():
+                normalized_key = re.sub(r"[^a-z0-9]", "", str(key).lower())
+                if any(
+                    secret in normalized_key
+                    for secret in ("password", "token", "secret", "authorization", "accesskey", "apikey")
+                ):
+                    sanitized[self.sanitize_log_value(key)] = "[REDACTED]"
+                else:
+                    sanitized[self.sanitize_log_value(key)] = self.sanitize_log_value(item)
+            return sanitized
         if isinstance(value, list):
             return [self.sanitize_log_value(item) for item in value]
         if isinstance(value, tuple):

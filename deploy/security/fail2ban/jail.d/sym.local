@@ -1,0 +1,51 @@
+[DEFAULT]
+banaction = sym-cloudflare
+ignoreip = 127.0.0.1/8 ::1
+
+[sym-sensitive]
+enabled = true
+filter = sym-sensitive
+logpath = /srv/sym/runtime/nginx/security.log
+findtime = 1d
+maxretry = 1
+bantime = 1d
+
+[sym-rate]
+enabled = true
+filter = sym-rate
+logpath = /srv/sym/runtime/nginx/security.log
+findtime = 5m
+maxretry = 3
+bantime = 1h
+
+[sym-basic-auth]
+enabled = true
+filter = sym-basic-auth
+logpath = /srv/sym/runtime/nginx/security.log
+findtime = 10m
+maxretry = 10
+bantime = 1h
+
+[sym-admin-login]
+enabled = true
+filter = sym-admin-login
+logpath = /srv/sym/runtime/nginx/security.log
+findtime = 15m
+maxretry = 10
+bantime = 1h
+
+[sym-sensitive-recidive]
+enabled = true
+filter = sym-sensitive-recidive
+logpath = /var/log/fail2ban.log
+findtime = 7d
+maxretry = 3
+bantime = 7d
+
+[sshd]
+enabled = true
+banaction = nftables-multiport
+port = ssh
+findtime = 10m
+maxretry = 5
+bantime = 1h

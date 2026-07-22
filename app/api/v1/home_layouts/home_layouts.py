@@ -24,8 +24,7 @@ async def get_home_layout_image_upload_token(payload: HomeLayoutImageUploadToken
 
 @router.post("/image/upload", summary="上传首页装修图片")
 async def upload_home_layout_image(file: UploadFile = File(...), current_user: User = DependAuth):
-    _ = current_user
-    return Success(data=await media_storage_service.upload(file, "home_layout"))
+    return Success(data=await media_storage_service.upload(file, "home_layout", current_user.id))
 
 
 @router.post("/draft/save", summary="保存首页装修草稿")

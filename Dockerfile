@@ -1,6 +1,6 @@
 ARG WEB_VITE_PUBLIC_PATH=/
-ARG WEB_VITE_BASE_API=https://api.symluxlib.com/api/v1
-ARG PUBLIC_VITE_API_BASE_URL=https://api.symluxlib.com/api/v1
+ARG WEB_VITE_BASE_API=/api/v1
+ARG PUBLIC_VITE_API_BASE_URL=/api/v1
 
 FROM node:20.20.2-bullseye AS admin_web
 
@@ -27,7 +27,7 @@ COPY official-web ./official-web
 RUN cd /opt/sym/official-web && VITE_API_BASE_URL="${PUBLIC_VITE_API_BASE_URL}" pnpm build
 
 
-FROM python:3.11-slim-bullseye AS app_runtime
+FROM python:3.11.11-slim-bullseye AS app_builder
 
 WORKDIR /opt/sym
 
@@ -38,31 +38,50 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core-apt \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gcc python3-dev curl ffmpeg \
+    && apt-get install -y --no-install-recommends gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install -r requirements.txt \
+RUN pip install --prefix=/opt/python -r requirements.txt \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     --extra-index-url https://pypi.org/simple \
     --default-timeout=300 \
     --retries 10
 
-COPY app ./app
-COPY migrations ./migrations
-COPY run.py pyproject.toml ./
-COPY scripts ./scripts
+
+FROM python:3.11.11-slim-bullseye AS app_runtime
+
+WORKDIR /opt/sym
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=runtime-apt \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=runtime-apt \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 sym \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin sym \
+    && mkdir -p /opt/sym/uploads /opt/sym/tmp /opt/sym/app/logs \
+    && chown -R 10001:10001 /opt/sym
+
+COPY --from=app_builder /opt/python /usr/local
+COPY --chown=10001:10001 app ./app
+COPY --chown=10001:10001 migrations ./migrations
+COPY --chown=10001:10001 run.py pyproject.toml ./
+COPY --chown=10001:10001 scripts ./scripts
 
 ENV LANG=zh_CN.UTF-8
+USER 10001:10001
 EXPOSE 9999
 
 CMD ["python", "/opt/sym/run.py"]
 
 
-FROM nginx:1.27-alpine AS nginx_runtime
+FROM nginx:1.27.3-alpine AS nginx_runtime
 
 COPY --from=admin_web /opt/sym/web/dist /usr/share/nginx/html/admin
 COPY --from=public_web /opt/sym/official-web/dist /usr/share/nginx/html/official
 COPY deploy/docker/nginx.bootstrap.conf /etc/nginx/conf.d/default.conf
+COPY deploy/docker/cloudflare-real-ip.inc /etc/nginx/cloudflare-real-ip.inc
 
 EXPOSE 80
