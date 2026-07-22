@@ -55,6 +55,8 @@ services:
     volumes:
       - uploads_data:/opt/sym/uploads
       - tmp_data:/opt/sym/tmp
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certs:/opt/sym/certs:ro
     expose:
       - "9999"
     networks: [frontend, backend]
@@ -91,6 +93,8 @@ services:
     volumes:
       - uploads_data:/opt/sym/uploads
       - tmp_data:/opt/sym/tmp
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certs:/opt/sym/certs:ro
     networks: [backend]
     read_only: true
     tmpfs:
@@ -129,6 +133,8 @@ services:
     volumes:
       - uploads_data:/opt/sym/uploads
       - tmp_data:/opt/sym/tmp
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certs:/opt/sym/certs:ro
     networks: [backend]
     read_only: true
     tmpfs:
