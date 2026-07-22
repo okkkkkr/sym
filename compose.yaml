@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16.6-alpine
+    image: postgres:16.14-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-sym}
@@ -21,7 +21,7 @@ services:
     pids_limit: 200
 
   redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.9-alpine
     restart: unless-stopped
     expose:
       - "6379"
