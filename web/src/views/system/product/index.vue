@@ -461,6 +461,7 @@ const columns = computed(() => [
     title: '好物名称',
     key: 'name',
     width: 200,
+    fixed: 'left',
     ellipsis: { tooltip: true },
   },
   {
@@ -929,7 +930,7 @@ onBeforeUnmount(() => {
       v-model:checked-row-keys="checkedRowKeys"
       :columns="columns"
       :get-data="getProductTableData"
-      :scroll-x="1560"
+      :scroll-x="1720"
       @on-data-change="clearSelection"
     >
       <template #queryBar>
