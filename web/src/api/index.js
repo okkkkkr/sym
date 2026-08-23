@@ -1,5 +1,16 @@
 import { getToken, request } from '@/utils'
 
+function downloadBlob(blob, filename) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+}
+
 async function downloadScopedFile(path, data = {}, filename = 'export.xlsx') {
   const response = await fetch(`${import.meta.env.VITE_BASE_API}${path}`, {
     method: 'POST',
@@ -21,13 +32,7 @@ async function downloadScopedFile(path, data = {}, filename = 'export.xlsx') {
     throw new Error(message)
   }
 
-  const blob = await response.blob()
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  window.URL.revokeObjectURL(url)
+  downloadBlob(await response.blob(), filename)
 }
 
 async function downloadScopedGetFile(path, filename = 'download.bin') {
@@ -49,13 +54,7 @@ async function downloadScopedGetFile(path, filename = 'download.bin') {
     throw new Error(message)
   }
 
-  const blob = await response.blob()
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  window.URL.revokeObjectURL(url)
+  downloadBlob(await response.blob(), filename)
 }
 
 function uploadScopedFile(path, file, config = {}) {

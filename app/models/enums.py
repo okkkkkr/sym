@@ -36,6 +36,7 @@ class ProductImportTaskItemStatus(StrEnum):
     PENDING = "pending"
     VALIDATED = "validated"
     SUCCESS = "success"
+    WARN = "warn"
     FAILED = "failed"
     SKIPPED = "skipped"
 

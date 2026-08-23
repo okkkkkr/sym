@@ -78,19 +78,21 @@ def get_task_extract_dir(task_id: int) -> str:
 
 async def upload_media_files(
     product_name: str, file_paths: list[str], media_type: str
-) -> tuple[list[dict[str, str]], str | None]:
+) -> tuple[list[dict[str, str]], list[str]]:
     uploads: list[dict[str, str]] = []
+    errors: list[str] = []
     media_label = "视频" if media_type == "video" else "图片"
     for file_path in file_paths:
         object_key = build_media_object_key(product_name, file_path, media_type)
         try:
             await media_storage_service.upload_local_file(file_path, object_key)
         except HTTPException as exc:
-            return uploads, f"{media_label}上传失败：{Path(file_path).name}，原因：{exc.detail}"
+            errors.append(f"{media_label}上传失败：{Path(file_path).name}，原因：{exc.detail}")
         except Exception as exc:
-            return uploads, f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}"
-        uploads.append({"path": file_path, "object_key": object_key})
-    return uploads, None
+            errors.append(f"{media_label}上传失败：{Path(file_path).name}，原因：{exc}")
+        else:
+            uploads.append({"path": file_path, "object_key": object_key})
+    return uploads, errors
 
 
 async def rollback_uploaded_media_keys(keys: list[str]) -> str:
@@ -109,13 +111,10 @@ async def rollback_uploaded_media_keys(keys: list[str]) -> str:
     return f"；媒体回滚失败：{'; '.join(failed_keys)}"
 
 
-async def generate_error_report(task_id: int) -> str | None:
-    items = await product_import_task_item_controller.model.filter(task_id=task_id).order_by(
-        "sheet_name", "row_no", "id"
-    )
+def build_import_report_content(items) -> bytes | None:
     error_rows = []
     for item in items:
-        if item.status != ProductImportTaskItemStatus.FAILED:
+        if item.status not in {ProductImportTaskItemStatus.WARN, ProductImportTaskItemStatus.FAILED}:
             continue
         error_rows.append(
             [
@@ -134,11 +133,20 @@ async def generate_error_report(task_id: int) -> str | None:
     if not error_rows:
         return None
 
-    content = build_xlsx_content(
+    return build_xlsx_content(
         sheet_title="导入错误报告",
         headers=["工作表", "位置", "行号", "好物名称", "分类", "品牌", "状态", "结果信息", "重复提示"],
         rows=error_rows,
     )
+
+
+async def generate_error_report(task_id: int) -> str | None:
+    content = build_import_report_content(
+        await product_import_task_item_controller.model.filter(task_id=task_id).order_by("sheet_name", "row_no", "id")
+    )
+    if content is None:
+        return None
+
     os.makedirs(settings.PRODUCT_IMPORT_TMP_DIR, exist_ok=True)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", dir=settings.PRODUCT_IMPORT_TMP_DIR) as temp_file:
         temp_file.write(content)
@@ -164,12 +172,20 @@ def parse_task_id(value: object) -> int | None:
         return None
 
 
-def build_import_summary(task, *, total_rows: int, processed_rows: int, failed_rows: int) -> dict:
+def build_import_summary(
+    task,
+    *,
+    total_rows: int,
+    processed_rows: int,
+    failed_rows: int,
+    warning_rows: int = 0,
+) -> dict:
     return {
         **dict(task.result_summary or {}),
         "total_count": total_rows,
         "valid_rows": max(processed_rows - failed_rows, 0),
         "invalid_rows": failed_rows,
+        "warning_rows": warning_rows,
         "import_started_at": datetime.now().strftime(settings.DATETIME_FORMAT),
     }
 
@@ -297,6 +313,7 @@ async def run_product_import(task_id: int) -> None:
 
     success_count = 0
     failed_count = 0
+    warning_count = 0
     processed_count = 0
     canceled = False
 
@@ -383,6 +400,7 @@ async def run_product_import(task_id: int) -> None:
                         total_rows=total_rows,
                         processed_rows=processed_count,
                         failed_rows=failed_count,
+                        warning_rows=warning_count,
                     ),
                 )
                 continue
@@ -403,6 +421,7 @@ async def run_product_import(task_id: int) -> None:
                         total_rows=total_rows,
                         processed_rows=processed_count,
                         failed_rows=failed_count,
+                        warning_rows=warning_count,
                     ),
                 )
                 continue
@@ -411,18 +430,11 @@ async def run_product_import(task_id: int) -> None:
             media_rolled_back = False
             product_created = False
             try:
-                image_uploads, image_upload_error = await upload_media_files(row.name, material_set.images, "image")
+                image_uploads, image_upload_errors = await upload_media_files(row.name, material_set.images, "image")
                 uploaded_media_keys.extend(uploaded["object_key"] for uploaded in image_uploads)
-                if image_upload_error:
-                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
-                    media_rolled_back = True
-                    raise HTTPException(status_code=500, detail=f"{image_upload_error}{rollback_error}")
-                video_uploads, video_upload_error = await upload_media_files(row.name, material_set.videos, "video")
+                video_uploads, video_upload_errors = await upload_media_files(row.name, material_set.videos, "video")
                 uploaded_media_keys.extend(uploaded["object_key"] for uploaded in video_uploads)
-                if video_upload_error:
-                    rollback_error = await rollback_uploaded_media_keys(uploaded_media_keys)
-                    media_rolled_back = True
-                    raise HTTPException(status_code=500, detail=f"{video_upload_error}{rollback_error}")
+                media_upload_errors = [*image_upload_errors, *video_upload_errors]
                 if (await product_import_task_controller.get(id=task_id)).status == ProductImportTaskStatus.CANCELED:
                     canceled = True
                     processed_count += 1
@@ -443,17 +455,20 @@ async def run_product_import(task_id: int) -> None:
                 )
                 image_keys = sort_media_keys([uploaded["object_key"] for uploaded in image_uploads])
                 video_keys = [video_item["object_key"] for video_item in video_uploads]
-                cover_image_key, image_keys = product_controller.normalize_product_images(cover_image_key, image_keys)
+                if image_keys:
+                    cover_image_key, image_keys = product_controller.normalize_product_images(
+                        cover_image_key, image_keys
+                    )
                 payload = {
                     "category_id": row.category_id,
                     "brand_id": row.brand_id,
                     "name": row.name,
                     "desc": row.desc,
                     "detail_description": row.detail_description,
-                    "cover_image_key": cover_image_key,
+                    "cover_image_key": cover_image_key or "",
                     "image_keys": image_keys,
                     "video_keys": video_keys,
-                    "status": row.status,
+                    "status": row.status if image_keys else False,
                     "order": row.order,
                 }
                 try:
@@ -473,11 +488,19 @@ async def run_product_import(task_id: int) -> None:
 
                 success_count += 1
                 processed_count += 1
-                await product_import_task_item_controller.mark_success(
-                    item.id,
-                    message="创建成功",
-                    product_id=product.id,
-                )
+                if media_upload_errors:
+                    warning_count += 1
+                    await product_import_task_item_controller.mark_warning(
+                        item.id,
+                        message=f"创建成功；{'；'.join(media_upload_errors)}",
+                        product_id=product.id,
+                    )
+                else:
+                    await product_import_task_item_controller.mark_success(
+                        item.id,
+                        message="创建成功",
+                        product_id=product.id,
+                    )
             except HTTPException as exc:
                 failed_count += 1
                 processed_count += 1
@@ -511,6 +534,7 @@ async def run_product_import(task_id: int) -> None:
                     total_rows=total_rows,
                     processed_rows=processed_count,
                     failed_rows=failed_count,
+                    warning_rows=warning_count,
                 ),
             )
 
@@ -520,6 +544,7 @@ async def run_product_import(task_id: int) -> None:
             total_rows=total_rows,
             processed_rows=processed_count,
             failed_rows=failed_count,
+            warning_rows=warning_count,
         )
         if canceled:
             await product_import_task_controller.update(
@@ -555,6 +580,7 @@ async def run_product_import(task_id: int) -> None:
                 total_rows=processed_count,
                 processed_rows=processed_count,
                 failed_rows=max(failed_count, 1),
+                warning_rows=warning_count,
             ),
             error_message=str(exc.detail),
         )
@@ -569,6 +595,7 @@ async def run_product_import(task_id: int) -> None:
                 total_rows=processed_count,
                 processed_rows=processed_count,
                 failed_rows=max(failed_count, 1),
+                warning_rows=warning_count,
             ),
             error_message=str(exc),
         )

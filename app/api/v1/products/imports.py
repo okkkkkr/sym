@@ -1,5 +1,4 @@
 import asyncio
-import os
 import socket
 from collections import Counter
 from base64 import b64decode
@@ -9,7 +8,7 @@ from urllib.parse import urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from tortoise.expressions import Q
 
 from app.controllers.product_import import product_import_task_controller
@@ -25,9 +24,10 @@ from app.schemas.product_import import (
     ProductImportUploadCompleteIn,
     ProductImportUploadInitIn,
 )
-from app.services import artifact_storage_service, product_import_upload_service, product_import_zip_service
+from app.services import product_import_upload_service, product_import_zip_service
 from app.settings import settings
 from app.tasks.product_import import (
+    build_import_report_content,
     run_product_import,
     run_product_import_task,
 )
@@ -328,9 +328,10 @@ async def build_task_detail_summary(task_id: int) -> dict:
     status_order = {
         ProductImportTaskItemStatus.PENDING.value: 0,
         ProductImportTaskItemStatus.SUCCESS.value: 1,
-        ProductImportTaskItemStatus.FAILED.value: 2,
-        ProductImportTaskItemStatus.SKIPPED.value: 3,
-        ProductImportTaskItemStatus.VALIDATED.value: 4,
+        ProductImportTaskItemStatus.WARN.value: 2,
+        ProductImportTaskItemStatus.FAILED.value: 3,
+        ProductImportTaskItemStatus.SKIPPED.value: 4,
+        ProductImportTaskItemStatus.VALIDATED.value: 5,
     }
 
     for item in items:
@@ -433,21 +434,18 @@ async def download_product_import_task_errors(
     task = await product_import_task_controller.get(id=task_id)
     if not current_user.is_superuser and task.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="当前用户无权查看该任务")
-    if not task.error_report_path:
+    content = build_import_report_content(
+        await product_import_task_item_controller.model.filter(task_id=task_id).order_by("sheet_name", "row_no", "id")
+    )
+    if content is None:
         raise HTTPException(status_code=404, detail="未找到错误报告")
 
-    local_path = artifact_storage_service.resolve_stored_path(task.error_report_path)
-    if local_path and os.path.exists(local_path):
-        filename = f"product-import-errors-{task_id}.xlsx"
-        return StreamingResponse(
-            iter([open(local_path, "rb").read()]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    if str(task.error_report_path).startswith(("http://", "https://", "/uploads/")):
-        return RedirectResponse(url=str(task.error_report_path))
-    raise HTTPException(status_code=404, detail="错误报告文件不可用")
+    filename = f"product-import-errors-{task_id}.xlsx"
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/template", summary="下载好物导入模板")

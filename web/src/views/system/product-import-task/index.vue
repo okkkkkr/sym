@@ -69,6 +69,7 @@ function statusTagType(status) {
 
 function itemStatusTagType(status) {
   if (status === 'success') return 'success'
+  if (status === 'warn') return 'warning'
   if (status === 'failed') return 'error'
   if (status === 'validated') return 'info'
   return 'warning'
@@ -150,6 +151,7 @@ const taskSummaryCards = computed(() => {
 const detailStatusOptions = [
   { label: '全部明细', value: null },
   { label: '成功', value: 'success' },
+  { label: '警告', value: 'warn' },
   { label: '失败', value: 'failed' },
   { label: '跳过', value: 'skipped' },
   { label: '待处理', value: 'pending' },
@@ -280,7 +282,7 @@ const columns = computed(() => [
               quaternary: true,
               type: 'info',
               disabled: !canDownloadErrorReport(row),
-              onClick: () => api.downloadProductImportErrors(row.id),
+              onClick: () => handleDownloadErrorReport(row),
             },
             { default: () => '错误报告' }
           )
@@ -389,6 +391,14 @@ async function handleCancel(row) {
   $table.value?.handleSearch()
   if (currentTask.value?.id === row.id) {
     await Promise.all([fetchTaskDetail(row.id), fetchDetailItems()])
+  }
+}
+
+async function handleDownloadErrorReport(row) {
+  try {
+    await api.downloadProductImportErrors(row.id)
+  } catch (error) {
+    $message.error(error.message || '错误报告下载失败')
   }
 }
 
@@ -603,7 +613,7 @@ onBeforeUnmount(() => {
                 type="info"
                 secondary
                 :disabled="!canDownloadErrorReport(currentTask)"
-                @click="api.downloadProductImportErrors(currentTask.id)"
+                @click="handleDownloadErrorReport(currentTask)"
               >
                 下载错误报告
               </NButton>

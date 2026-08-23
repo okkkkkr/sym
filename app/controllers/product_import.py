@@ -111,7 +111,7 @@ class ProductImportTaskController(CRUDBase[ProductImportTask, dict, dict]):
         task = await self.get(id=task_id)
         if task.status == ProductImportTaskStatus.CANCELED:
             return task
-        if failed_count <= 0:
+        if failed_count <= 0 and not int((result_summary or {}).get("warning_rows") or 0):
             status = ProductImportTaskStatus.SUCCESS
         elif success_count > 0:
             status = ProductImportTaskStatus.WARN
@@ -183,6 +183,16 @@ class ProductImportTaskItemController(CRUDBase[ProductImportTaskItem, dict, dict
             id=item_id,
             obj_in={
                 "status": ProductImportTaskItemStatus.SUCCESS,
+                "message": message,
+                "product_id": product_id,
+            },
+        )
+
+    async def mark_warning(self, item_id: int, *, message: str, product_id: int):
+        return await self.update(
+            id=item_id,
+            obj_in={
+                "status": ProductImportTaskItemStatus.WARN,
                 "message": message,
                 "product_id": product_id,
             },

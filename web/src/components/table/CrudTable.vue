@@ -1,5 +1,5 @@
 <template>
-  <div v-bind="$attrs">
+  <div ref="tableRoot" v-bind="$attrs">
     <QueryBar v-if="$slots.queryBar" mb-30 @search="handleSearch" @reset="handleReset">
       <slot name="queryBar" />
     </QueryBar>
@@ -86,8 +86,15 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:queryItems', 'update:sorter', 'update:checkedRowKeys', 'onChecked', 'onDataChange'])
+const emit = defineEmits([
+  'update:queryItems',
+  'update:sorter',
+  'update:checkedRowKeys',
+  'onChecked',
+  'onDataChange',
+])
 const loading = ref(false)
+const tableRoot = ref(null)
 const initQuery = { ...props.queryItems }
 const tableData = ref([])
 
@@ -119,10 +126,11 @@ const pagination = reactive({
   onChange: (page) => {
     pagination.page = page
   },
-  onUpdatePageSize: (pageSize) => {
+  onUpdatePageSize: async (pageSize) => {
     pagination.page_size = pageSize
     pagination.page = 1
-    handleQuery()
+    await handleQuery()
+    scrollToTableTop()
   },
 })
 
@@ -171,11 +179,17 @@ async function handleReset() {
   pagination.page = 1
   handleQuery()
 }
-function onPageChange(currentPage) {
+async function onPageChange(currentPage) {
   pagination.page = currentPage
   if (props.remote) {
-    handleQuery()
+    await handleQuery()
   }
+  scrollToTableTop()
+}
+
+async function scrollToTableTop() {
+  await nextTick()
+  tableRoot.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 function onChecked(rowKeys) {
   if (props.columns.some((item) => item.type === 'selection')) {
