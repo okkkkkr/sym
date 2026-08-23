@@ -187,7 +187,8 @@ export default {
     request.post('/product/import/upload-chunk', data, config),
   getProductImportUploadStatus: (params = {}) =>
     request.get('/product/import/upload-status', { params }),
-  completeProductImportUpload: (data = {}) => request.post('/product/import/upload-complete', data),
+  completeProductImportUpload: (data = {}) =>
+    request.post('/product/import/upload-complete', data, { timeout: 30 * 60 * 1000 }),
   getActiveProductImportTask: () => request.get('/product/import/active-task'),
   getProductImportTasks: (params = {}) => request.get('/product/import/tasks', { params }),
   getProductImportTask: (params = {}) => request.get('/product/import/task', { params }),

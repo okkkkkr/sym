@@ -11,6 +11,7 @@ from app.utils.product_media import sort_media_paths
 
 
 class ProductImportZipService:
+    WORKBOOK_FILENAMES = ("products.xlsx", "product.xlsx")
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
     IGNORED_ROOT_DIRECTORIES = {"__MACOSX"}
@@ -24,7 +25,7 @@ class ProductImportZipService:
         if os.path.getsize(zip_path) > settings.PRODUCT_IMPORT_MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="ZIP 文件大小超出系统限制")
 
-        root_excel_found = False
+        workbook_found = False
         file_count = 0
         total_uncompressed_size = 0
         directories = set()
@@ -49,18 +50,21 @@ class ProductImportZipService:
                     raise HTTPException(status_code=400, detail="ZIP 包内存在空文件")
 
                 if len(normalized_parts) == 1:
-                    if normalized_parts[0] == "product.xlsx":
-                        root_excel_found = True
+                    if normalized_parts[0] in self.WORKBOOK_FILENAMES:
+                        workbook_found = True
                     else:
-                        raise HTTPException(status_code=400, detail="ZIP 导入根目录仅允许存在 product.xlsx")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="ZIP 导入根目录仅允许存在 products.xlsx 或 product.xlsx",
+                        )
                     continue
 
                 if len(normalized_parts) != 2:
                     raise HTTPException(status_code=400, detail="ZIP 仅支持一级素材目录")
                 directories.add(normalized_parts[0])
 
-        if not root_excel_found:
-            raise HTTPException(status_code=400, detail="ZIP 导入根目录必须包含 product.xlsx")
+        if not workbook_found:
+            raise HTTPException(status_code=400, detail="ZIP 导入根目录必须包含 products.xlsx（兼容 product.xlsx）")
 
         return {
             "file_count": file_count,
@@ -103,7 +107,7 @@ class ProductImportZipService:
         material_map: dict[str, ProductImportMaterialSet] = {}
         for entry in sorted(os.listdir(extract_dir)):
             absolute_path = os.path.join(extract_dir, entry)
-            if entry == "product.xlsx" or not os.path.isdir(absolute_path):
+            if entry in self.WORKBOOK_FILENAMES or not os.path.isdir(absolute_path):
                 continue
 
             images: list[str] = []
@@ -127,6 +131,13 @@ class ProductImportZipService:
                 videos=videos,
             )
         return material_map
+
+    def get_workbook_path(self, extract_dir: str) -> str:
+        for filename in self.WORKBOOK_FILENAMES:
+            workbook_path = os.path.join(extract_dir, filename)
+            if os.path.exists(workbook_path):
+                return workbook_path
+        raise HTTPException(status_code=404, detail="未找到导入模板文件")
 
     @staticmethod
     def _pick_cover_image(images: list[str]) -> str | None:

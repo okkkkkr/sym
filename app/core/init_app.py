@@ -287,7 +287,7 @@ async def init_menus():
         order=5,
         parent_id=0,
         icon="material-symbols:upload-file-outline",
-        is_hidden=False,
+        is_hidden=settings.APP_ENV == "production",
         component="Layout",
         keepalive=False,
         redirect="/batch/product-import",
@@ -501,7 +501,7 @@ async def init_menus():
             order=item["order"],
             parent_id=batch_menu.id,
             icon=item["icon"],
-            is_hidden=False,
+            is_hidden=settings.APP_ENV == "production",
             component=item["component"],
             keepalive=False,
         )

@@ -46,6 +46,14 @@ sudo -u sym cp .env.example .env
 
 这一步执行完后，先手动编辑 `/opt/sym/.env`，填入生产环境真实配置，再继续后面的步骤。
 
+生产环境必须显式配置：
+
+```env
+APP_ENV=production
+```
+
+该配置会隐藏管理后台“批量中心”，并使好物批量导入相关接口返回 `404`。
+
 如果静态上传资源使用 Cloudflare R2，至少配置：
 
 ```env

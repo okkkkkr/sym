@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     APP_TITLE: str = "SYM Admin"
     PROJECT_NAME: str = "SYM Admin"
     APP_DESCRIPTION: str = "Description"
+    APP_ENV: typing.Literal["development", "production"] = "development"
 
     CORS_ORIGINS: typing.List[str] = [
         "https://symluxlib.com",
@@ -33,6 +34,11 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 9999
+
+    @field_validator("APP_ENV", mode="before")
+    @classmethod
+    def normalize_app_env(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -87,7 +93,7 @@ class Settings(BaseSettings):
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
-    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 2 * 1024 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_FILE_SIZE: int = 10 * 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     VIDEO_UPLOAD_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "video-processing")
     PRODUCT_IMPORT_CHUNK_SIZE: int = 5 * 1024 * 1024

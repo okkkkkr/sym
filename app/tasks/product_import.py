@@ -307,9 +307,7 @@ async def run_product_import(task_id: int) -> None:
         if not os.path.isdir(extract_dir):
             raise HTTPException(status_code=404, detail="未找到导入解压目录")
         await product_import_task_item_controller.model.filter(task_id=task_id).delete()
-        workbook_path = os.path.join(extract_dir, "product.xlsx")
-        if not os.path.exists(workbook_path):
-            raise HTTPException(status_code=404, detail="未找到导入模板文件")
+        workbook_path = product_import_zip_service.get_workbook_path(extract_dir)
         material_map = product_import_zip_service.scan_materials(extract_dir)
         rows = (await product_import_parser_service.parse(workbook_path)).rows
         row_item_map = {

@@ -24,7 +24,7 @@ const systemTask = ref(null)
 const pollingTimer = ref(null)
 
 const chunkSize = 5 * 1024 * 1024
-const maxFileSize = 2 * 1024 * 1024 * 1024
+const maxFileSize = 10 * 1024 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
 const activeTaskStatuses = ['uploading', 'pending', 'running']
 
@@ -243,7 +243,7 @@ async function handleFileChange(event) {
     return
   }
   if (file.size > maxFileSize) {
-    $message.error('文件大小不能超过 2GB')
+    $message.error('文件大小不能超过 10GB')
     event.target.value = ''
     return
   }
@@ -452,9 +452,9 @@ onBeforeUnmount(() => {
 
     <NSpace vertical :size="16">
       <NAlert type="info" :show-icon="false">
-        支持上传不超过 2GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
-        product.xlsx。系统会自动读取其中全部非空 sheet，每个 sheet 都需包含完整表头；素材目录名需与
-        Excel 中的“素材目录”列精确一致。
+        支持上传不超过 10GB 的 ZIP 包。ZIP 可先包含一层总目录，导入根目录必须包含
+        products.xlsx（兼容旧文件名 product.xlsx）。系统会自动读取其中全部非空 sheet，每个 sheet
+        都需包含完整表头；素材目录名需与 Excel 中的“素材目录”列精确一致。
       </NAlert>
 
       <NCard title="上传 ZIP 包" size="small">
@@ -497,9 +497,12 @@ onBeforeUnmount(() => {
 
       <NCard v-if="!systemTask" title="导入说明" size="small">
         <NSpace vertical :size="10">
-          <div>1. 支持 ZIP 外层总目录，导入根目录需为 product.xlsx + 一层素材目录结构。</div>
           <div>
-            2. product.xlsx 支持多个 sheet，系统会自动合并读取所有非空 sheet；每个非空 sheet
+            1. 支持 ZIP 外层总目录，导入根目录需为 products.xlsx（兼容 product.xlsx）+
+            一层素材目录结构。
+          </div>
+          <div>
+            2. products.xlsx 支持多个 sheet，系统会自动合并读取所有非空 sheet；每个非空 sheet
             都必须包含完整模板表头。
           </div>
           <div>3. 品牌、分类、标签均按名称精确匹配。</div>

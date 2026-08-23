@@ -146,7 +146,7 @@ def build_product_import_example_zip() -> bytes:
 
     buffer = BytesIO()
     with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as zip_file:
-        zip_file.writestr("product.xlsx", workbook_content)
+        zip_file.writestr("products.xlsx", workbook_content)
         zip_file.writestr("示例好物A/示例好物A_cover.png", SAMPLE_PNG_BYTES)
         zip_file.writestr("示例好物A/示例好物A_1.png", SAMPLE_PNG_BYTES)
     return buffer.getvalue()
