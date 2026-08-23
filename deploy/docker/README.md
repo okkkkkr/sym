@@ -89,6 +89,15 @@ docker compose --env-file .env.local-docker -f compose.yaml -f compose.local.yam
 
 ### 第 2 步：构建并启动全部服务
 
+`api`、`worker`、`beat` 使用固定的非 root 用户 `10001:10001`。首次从旧版本升级时，先迁移现有共享卷属主：
+
+```bash
+docker compose --env-file .env.docker run --rm --user root --no-deps \
+  --entrypoint sh api -c 'chown -R 10001:10001 /opt/sym/uploads /opt/sym/tmp'
+```
+
+该命令只修改文件属主，不删除卷内数据。新建数据卷无需执行。
+
 ```bash
 docker compose --env-file .env.docker up -d --build
 ```

@@ -70,6 +70,16 @@ docker compose --env-file .env.local-docker -f compose.yaml -f compose.local.yam
 docker compose --env-file .env.local-docker -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
+如果现有 `uploads_data`、`tmp_data` 来自以 root 运行的旧镜像，首次升级前先迁移共享卷属主：
+
+```bash
+docker compose --env-file .env.local-docker -f compose.yaml -f compose.local.yaml \
+  run --rm --user root --no-deps --entrypoint sh api \
+  -c 'chown -R 10001:10001 /opt/sym/uploads /opt/sym/tmp'
+```
+
+该命令只修改文件属主，不删除卷内数据；完成一次后无需重复执行。新建数据卷无需执行。
+
 `compose.local.yaml` 会让 `api`、`worker` 和 `beat` 统一加载 `.env.local-docker`，同时保持本地 Nginx 使用 `6868:80` 和本地 `/api/v1` 反向代理。
 
 禁止执行 `docker compose down -v`。该命令会删除 PostgreSQL、Redis、上传目录和临时目录的数据卷。

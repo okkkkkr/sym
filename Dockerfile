@@ -29,6 +29,9 @@ RUN cd /opt/sym/official-web && VITE_API_BASE_URL="${PUBLIC_VITE_API_BASE_URL}" 
 
 FROM python:3.11-slim-bullseye AS app_runtime
 
+ARG APP_UID=10001
+ARG APP_GID=10001
+
 WORKDIR /opt/sym
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core-apt \
@@ -41,6 +44,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core-apt \
     && apt-get install -y --no-install-recommends gcc python3-dev curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --gid "${APP_GID}" sym \
+    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --home-dir /opt/sym --no-create-home --shell /usr/sbin/nologin sym
+
 COPY requirements.txt ./
 RUN pip install -r requirements.txt \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
@@ -48,13 +54,18 @@ RUN pip install -r requirements.txt \
     --default-timeout=300 \
     --retries 10
 
-COPY app ./app
-COPY migrations ./migrations
-COPY run.py pyproject.toml ./
-COPY scripts ./scripts
+COPY --chown=${APP_UID}:${APP_GID} app ./app
+COPY --chown=${APP_UID}:${APP_GID} migrations ./migrations
+COPY --chown=${APP_UID}:${APP_GID} run.py pyproject.toml ./
+COPY --chown=${APP_UID}:${APP_GID} scripts ./scripts
+
+RUN mkdir -p /opt/sym/uploads /opt/sym/tmp /opt/sym/app/logs \
+    && chown -R "${APP_UID}:${APP_GID}" /opt/sym/uploads /opt/sym/tmp /opt/sym/app/logs
 
 ENV LANG=zh_CN.UTF-8
 EXPOSE 9999
+
+USER sym
 
 CMD ["python", "/opt/sym/run.py"]
 
