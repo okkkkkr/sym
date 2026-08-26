@@ -19,6 +19,9 @@ certbot/conf/
 certbot/www/
 certs/
 .playwright-cli
+runtime/
+deploy/security/admin.htpasswd
+deploy/security/cloudflare.env
 
 .DS_Store
 ._.DS_Store

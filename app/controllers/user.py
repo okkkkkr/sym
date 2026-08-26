@@ -34,13 +34,8 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
 
     async def authenticate(self, credentials: CredentialsSchema) -> Optional["User"]:
         user = await self.model.filter(username=credentials.username).first()
-        if not user:
-            raise HTTPException(status_code=400, detail="无效的用户名")
-        verified = verify_password(credentials.password, user.password)
-        if not verified:
-            raise HTTPException(status_code=400, detail="密码错误!")
-        if not user.is_active:
-            raise HTTPException(status_code=400, detail="用户已被禁用")
+        if not user or not verify_password(credentials.password, user.password) or not user.is_active:
+            raise HTTPException(status_code=401, detail="用户名或密码错误")
         return user
 
     async def update_roles(self, user: User, role_ids: List[int]) -> None:
@@ -49,11 +44,12 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
             role_obj = await role_controller.get(id=role_id)
             await user.roles.add(role_obj)
 
-    async def reset_password(self, user_id: int):
+    async def reset_password(self, user_id: int, new_password: str):
         user_obj = await self.get(id=user_id)
         if user_obj.is_superuser:
             raise HTTPException(status_code=403, detail="不允许重置超级管理员密码")
-        user_obj.password = get_password_hash(password="123456")
+        user_obj.password = get_password_hash(password=new_password)
+        user_obj.token_version += 1
         await user_obj.save()
 
 

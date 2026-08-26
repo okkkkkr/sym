@@ -41,10 +41,10 @@ sudo apt-get install -y ffmpeg
 ### 第 4 步：创建后端配置文件
 
 ```bash
-sudo -u sym cp .env.example .env
+sudo -u sym install -m 600 /dev/null .env
 ```
 
-这一步执行完后，先手动编辑 `/opt/sym/.env`，填入生产环境真实配置，再继续后面的步骤。
+这一步执行完后，参考 `app/settings/config.py` 和本节列出的变量，手动编辑 `/opt/sym/.env`，填入生产环境真实配置，再继续后面的步骤。
 
 生产环境必须显式配置：
 

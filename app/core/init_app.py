@@ -6,7 +6,6 @@ from tortoise.expressions import Q
 
 from app.api import api_router
 from app.controllers.api import api_controller
-from app.controllers.user import UserCreate, user_controller
 from app.core.exceptions import (
     DoesNotExist,
     DoesNotExistHandle,
@@ -23,7 +22,11 @@ from app.models.admin import Api, Menu, Platform, Role
 from app.schemas.menus import MenuType
 from app.settings.config import settings
 
-from .middlewares import ApiIpRateLimitMiddleware, BackGroundTaskMiddleware, HttpAuditLogMiddleware
+from .middlewares import (
+    ApiIpRateLimitMiddleware,
+    BackGroundTaskMiddleware,
+    HttpAuditLogMiddleware,
+)
 
 
 def make_middlewares():
@@ -61,20 +64,6 @@ def register_exceptions(app: FastAPI):
 
 def register_routers(app: FastAPI, prefix: str = "/api"):
     app.include_router(api_router, prefix=prefix)
-
-
-async def init_superuser():
-    user = await user_controller.model.exists()
-    if not user:
-        await user_controller.create_user(
-            UserCreate(
-                username="admin",
-                email="admin@admin.com",
-                password="123456",
-                is_active=True,
-                is_superuser=True,
-            )
-        )
 
 
 async def init_platforms():
@@ -280,23 +269,28 @@ async def init_menus():
         data_menu = await Menu.create(**data_payload)
 
     batch_menu = await Menu.filter(path="/batch", parent_id=0).first()
-    batch_payload = dict(
-        menu_type=MenuType.CATALOG,
-        name="批量中心",
-        path="/batch",
-        order=5,
-        parent_id=0,
-        icon="material-symbols:upload-file-outline",
-        is_hidden=settings.APP_ENV == "production",
-        component="Layout",
-        keepalive=False,
-        redirect="/batch/product-import",
-    )
-    if batch_menu:
-        batch_menu.update_from_dict(batch_payload)
-        await batch_menu.save()
-    else:
-        batch_menu = await Menu.create(**batch_payload)
+    if settings.PRODUCT_IMPORT_ENABLED:
+        batch_payload = dict(
+            menu_type=MenuType.CATALOG,
+            name="批量中心",
+            path="/batch",
+            order=5,
+            parent_id=0,
+            icon="material-symbols:upload-file-outline",
+            is_hidden=False,
+            component="Layout",
+            keepalive=False,
+            redirect="/batch/product-import",
+        )
+        if batch_menu:
+            batch_menu.update_from_dict(batch_payload)
+            await batch_menu.save()
+        else:
+            batch_menu = await Menu.create(**batch_payload)
+    elif batch_menu:
+        await Menu.filter(parent_id=batch_menu.id).delete()
+        await batch_menu.delete()
+        batch_menu = None
 
     content_children = [
         {
@@ -492,7 +486,7 @@ async def init_menus():
         },
     ]
 
-    for item in batch_children:
+    for item in batch_children if batch_menu else []:
         menu_obj = await Menu.filter(parent_id=batch_menu.id, path=item["path"]).first()
         payload = dict(
             menu_type=MenuType.MENU,
@@ -501,7 +495,7 @@ async def init_menus():
             order=item["order"],
             parent_id=batch_menu.id,
             icon=item["icon"],
-            is_hidden=settings.APP_ENV == "production",
+            is_hidden=False,
             component=item["component"],
             keepalive=False,
         )
@@ -563,7 +557,6 @@ async def init_roles():
 
 async def init_data():
     await init_db()
-    await init_superuser()
     await init_platforms()
     await init_menus()
     await init_apis()

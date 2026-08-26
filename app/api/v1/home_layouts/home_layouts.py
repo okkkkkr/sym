@@ -4,7 +4,11 @@ from app.controllers.home_layout import home_layout_controller
 from app.core.dependency import DependAuth
 from app.models import User
 from app.schemas.base import Success
-from app.schemas.home_layouts import HomeLayoutDraftSaveIn, HomeLayoutImageUploadTokenIn, HomeLayoutPublishIn
+from app.schemas.home_layouts import (
+    HomeLayoutDraftSaveIn,
+    HomeLayoutImageUploadTokenIn,
+    HomeLayoutPublishIn,
+)
 from app.services.media_storage import media_storage_service
 
 router = APIRouter()
@@ -24,8 +28,7 @@ async def get_home_layout_image_upload_token(payload: HomeLayoutImageUploadToken
 
 @router.post("/image/upload", summary="上传首页装修图片")
 async def upload_home_layout_image(file: UploadFile = File(...), current_user: User = DependAuth):
-    _ = current_user
-    return Success(data=await media_storage_service.upload(file, "home_layout"))
+    return Success(data=await media_storage_service.upload(file, "home_layout", current_user.id))
 
 
 @router.post("/draft/save", summary="保存首页装修草稿")

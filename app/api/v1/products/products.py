@@ -105,8 +105,7 @@ async def upload_product_media(
 ):
     normalized_media_type = str(media_type or "").strip().lower()
     if normalized_media_type != "video":
-        _ = current_user
-        return Success(data=await media_storage_service.upload(file, normalized_media_type))
+        return Success(data=await media_storage_service.upload(file, normalized_media_type, current_user.id))
     temp_path, normalized_name, file_size = await video_processing_service.save_temp_upload(file)
     try:
         resource = await video_resource_controller.create(

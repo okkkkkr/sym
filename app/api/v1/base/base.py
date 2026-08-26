@@ -51,8 +51,9 @@ from app.services.certificate_monitor import (
     certificate_monitor_service,
 )
 from app.services.media_storage import media_storage_service
-from app.services.rate_guard import rate_guard_service
+from app.services.rate_guard import RateGuardUnavailable, rate_guard_service
 from app.settings import settings
+from app.utils.client_ip import get_client_ip
 from app.utils.jwt_utils import create_access_token
 from app.utils.password import get_password_hash, verify_password
 
@@ -66,17 +67,18 @@ NATURE_CUSTOM_NAME = "nature"
 
 
 def get_client_identity(request: Request) -> tuple[str, str]:
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded_for.split(",", 1)[0].strip()
-    if not client_ip and request.client:
-        client_ip = request.client.host
-    return client_ip or "unknown", request.headers.get("user-agent", "")[:500]
+    return get_client_ip(request), request.headers.get("user-agent", "")[:500]
 
 
-def build_login_failure_keys(request: Request, username: str) -> tuple[str]:
+def build_login_guard_keys(request: Request, username: str) -> tuple[str, str, str, str]:
     client_ip, _ = get_client_identity(request)
     normalized_username = str(username or "").strip().lower()
-    return (rate_guard_service.build_key("login-ip-user", client_ip, normalized_username),)
+    return (
+        rate_guard_service.build_key("login-ip-failures", client_ip),
+        rate_guard_service.build_key("login-user-failures", normalized_username),
+        rate_guard_service.build_key("login-ip-block", client_ip),
+        rate_guard_service.build_key("login-user-block", normalized_username),
+    )
 
 
 async def is_duplicate_track(namespace: str, seconds: int, *parts: object) -> bool:
@@ -85,29 +87,39 @@ async def is_duplicate_track(namespace: str, seconds: int, *parts: object) -> bo
 
 @router.post("/access_token", summary="获取token")
 async def login_access_token(credentials: CredentialsSchema, request: Request):
-    failure_keys = build_login_failure_keys(request, credentials.username)
-    for key in failure_keys:
-        if await rate_guard_service.is_limited(key, settings.LOGIN_FAILURE_LIMIT):
-            raise HTTPException(status_code=429, detail="登录失败次数过多，请1小时后再试")
-
+    ip_failures, user_failures, ip_block, user_block = build_login_guard_keys(request, credentials.username)
     try:
-        user: User = await user_controller.authenticate(credentials)
-    except HTTPException:
-        locked = False
-        for key in failure_keys:
-            locked = (
-                await rate_guard_service.hit_limit(
-                    key,
-                    settings.LOGIN_FAILURE_LIMIT,
-                    settings.LOGIN_FAILURE_WINDOW_SECONDS,
-                )
-                or locked
-            )
-        if locked:
+        if await rate_guard_service.exists(ip_block, strict=True) or await rate_guard_service.exists(
+            user_block, strict=True
+        ):
             raise HTTPException(status_code=429, detail="登录失败次数过多，请1小时后再试")
-        raise
+        try:
+            user: User = await user_controller.authenticate(credentials)
+        except HTTPException:
+            ip_locked = await rate_guard_service.hit_limit(
+                ip_failures,
+                settings.LOGIN_IP_FAILURE_LIMIT,
+                settings.LOGIN_FAILURE_WINDOW_SECONDS,
+                strict=True,
+            )
+            user_locked = await rate_guard_service.hit_limit(
+                user_failures,
+                settings.LOGIN_USERNAME_FAILURE_LIMIT,
+                settings.LOGIN_FAILURE_WINDOW_SECONDS,
+                strict=True,
+            )
+            if ip_locked:
+                await rate_guard_service.block(ip_block, settings.LOGIN_BLOCK_SECONDS, strict=True)
+            if user_locked:
+                await rate_guard_service.block(user_block, settings.LOGIN_BLOCK_SECONDS, strict=True)
+            if ip_locked or user_locked:
+                raise HTTPException(status_code=429, detail="登录失败次数过多，请1小时后再试")
+            raise
 
-    await rate_guard_service.clear(*failure_keys)
+        await rate_guard_service.clear(ip_failures, user_failures, strict=True)
+    except RateGuardUnavailable:
+        raise HTTPException(status_code=503, detail="登录服务暂时不可用")
+
     await user_controller.update_last_login(user.id)
     access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     expire = datetime.now(timezone.utc) + access_token_expires
@@ -118,6 +130,7 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
                 user_id=user.id,
                 username=user.username,
                 is_superuser=user.is_superuser,
+                token_version=user.token_version,
                 exp=expire,
             )
         ),
@@ -201,7 +214,8 @@ async def update_user_password(req_in: UpdatePassword):
     if not verified:
         return Fail(msg="旧密码验证错误！")
     user.password = get_password_hash(req_in.new_password)
-    await user.save()
+    user.token_version += 1
+    await user.save(update_fields=["password", "token_version"])
     return Success(msg="修改成功")
 
 

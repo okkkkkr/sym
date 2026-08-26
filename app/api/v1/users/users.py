@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Query
 from tortoise.expressions import Q
 
 from app.controllers.dept import dept_controller
@@ -63,7 +63,11 @@ async def create_user(
 async def update_user(
     user_in: UserUpdate,
 ):
+    existing_user = await user_controller.get(id=user_in.id)
     user = await user_controller.update(id=user_in.id, obj_in=user_in)
+    if existing_user.is_active and not user_in.is_active:
+        user.token_version += 1
+        await user.save(update_fields=["token_version"])
     await user_controller.update_roles(user, user_in.role_ids)
     return Success(msg="Updated Successfully")
 
@@ -77,6 +81,6 @@ async def delete_user(
 
 
 @router.post("/reset_password", summary="重置密码")
-async def reset_password(user_id: int = Body(..., description="用户ID", embed=True)):
-    await user_controller.reset_password(user_id)
-    return Success(msg="密码已重置为123456")
+async def reset_password(payload: UserResetPassword):
+    await user_controller.reset_password(payload.user_id, payload.new_password)
+    return Success(msg="密码已重置")

@@ -25,16 +25,26 @@
 - `api` / `worker` / `beat` 共用同一套 Python 运行镜像，当前包含 `ffmpeg`，供视频异步压缩使用
 - `postgres`：PostgreSQL 数据库
 - `redis`：Redis 与 Celery Broker
+- 生产网络分为 `frontend` 与内部 `backend`；Nginx 不能连接 PostgreSQL/Redis，数据库与 Redis 不发布宿主机端口
+- `api`、`worker`、`beat` 以 UID 10001、只读根文件系统和 `cap_drop: ALL` 运行
 
 ## 首次部署
 
 ### 第 1 步：准备环境变量
 
 ```bash
-cp .env.docker.example .env.docker
+install -m 600 /dev/null .env.docker
 ```
 
-然后手动编辑 `.env.docker`，填入生产环境真实配置。
+然后参考 `app/settings/config.py` 和本节列出的变量，手动编辑 `.env.docker`，填入生产环境真实配置。
+
+生产必须填写随机 `SECRET_KEY`、`POSTGRES_PASSWORD` 和 `ADMIN_HTPASSWD_FILE`。先执行：
+
+```bash
+htpasswd -B -c deploy/security/admin.htpasswd <admin-name>
+```
+
+生产 Compose 强制 `PRODUCT_IMPORT_ENABLED=false`，商品 ZIP 导入路由、菜单和 Celery 任务不会注册。本地叠加 `compose.local.yaml` 才会重新开启。
 
 生产环境必须显式配置：
 
@@ -188,5 +198,9 @@ docker compose --env-file .env.docker up -d api worker beat nginx
 - `docker compose --env-file .env.docker logs -f api`
 - `docker compose --env-file .env.docker logs -f worker`
 - `docker compose --env-file .env.docker logs -f beat`
-- 打开 `/` 和 `/admin/`
-- 访问 `/api/v1/*` 接口
+- 打开 `https://symluxlib.com/`，确认只有公开站点 API 可用
+- 打开 `https://admin.symluxlib.com/`，确认先要求 Basic Auth、之后仍要求应用登录
+- 确认 `https://api.symluxlib.com/` 与生产 `/api/v1/product/import/*` 返回 404
+- 确认分类、品牌、标签 XLSX 导入以及单条商品媒体上传仍可用
+
+完整的防火墙、Fail2ban、Cloudflare 免费规则和上线顺序见 [deploy/security/README.md](/Users/kun/dida/sym/deploy/security/README.md:1)。

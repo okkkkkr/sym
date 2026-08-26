@@ -1,13 +1,19 @@
 import mimetypes
 import os
 import tempfile
+import warnings
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from app.log import logger
-from app.services.product_media_upload import PRODUCT_MEDIA_TYPE_RULES, ProductMediaUploadService
+from app.models.admin import MediaUpload
+from app.services.product_media_upload import (
+    PRODUCT_MEDIA_TYPE_RULES,
+    ProductMediaUploadService,
+)
 from app.services.storage import UploadOptions, get_storage_provider
 from app.settings import settings
 
@@ -38,18 +44,22 @@ class MediaStorageService:
         self.validate_media_type(media_type)
         return self.key_builder._build_object_key(media_type, file_name)
 
-    async def upload(self, upload_file: UploadFile, media_type: str) -> dict:
+    async def upload(self, upload_file: UploadFile, media_type: str, uploaded_by: int) -> dict:
         if not upload_file:
             raise HTTPException(status_code=400, detail="未找到待上传文件")
         media_rule = self.validate_media_type(media_type)
         file_name = self.sanitize_filename(upload_file.filename or "file")
         mime_type = self.validate_file(file_name, upload_file.content_type, media_rule)
         object_key = self.build_object_key(str(media_type or "").strip().lower(), file_name)
-        return (await self.upload_file(upload_file, object_key, mime_type=mime_type)).to_api_dict()
+        upload_result = await self.upload_file(upload_file, object_key, mime_type=mime_type)
+        await MediaUpload.create(object_key=upload_result.key, uploaded_by=uploaded_by)
+        return upload_result.to_api_dict()
 
     async def upload_file(self, upload_file: UploadFile, object_key: str, mime_type: str = ""):
         temp_path = await self._save_upload_file(upload_file)
         try:
+            if (mime_type or "").startswith("image/"):
+                self._validate_image_content(temp_path)
             return await self.upload_local_file(
                 temp_path,
                 object_key,
@@ -139,6 +149,23 @@ class MediaStorageService:
     def _validate_size(file_size: int) -> None:
         if file_size > settings.MEDIA_UPLOAD_MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="文件大小超出系统限制")
+
+    @staticmethod
+    def _validate_image_content(file_path: str) -> None:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(file_path) as image:
+                    image.verify()
+                with Image.open(file_path) as image:
+                    image.load()
+        except (
+            UnidentifiedImageError,
+            OSError,
+            Image.DecompressionBombWarning,
+            Image.DecompressionBombError,
+        ) as exc:
+            raise HTTPException(status_code=400, detail="图片内容无法解码或尺寸异常") from exc
 
     @staticmethod
     def _strip_local_upload_prefix(value: str) -> str:

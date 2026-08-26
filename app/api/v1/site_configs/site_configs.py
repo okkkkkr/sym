@@ -4,7 +4,12 @@ from app.controllers.site_config import serialize_site_config, site_config_contr
 from app.core.dependency import DependAuth
 from app.models import User
 from app.schemas.base import Success
-from app.schemas.site_configs import SiteConfigLogoDeleteIn, SiteConfigLogoUploadTokenIn, SiteConfigUpdate
+from app.schemas.site_configs import (
+    SiteConfigLogoDeleteIn,
+    SiteConfigLogoUploadTokenIn,
+    SiteConfigUpdate,
+)
+from app.services.media_cleanup import delete_owned_transient_media_keys
 from app.services.media_storage import media_storage_service
 
 router = APIRouter()
@@ -26,14 +31,12 @@ async def get_site_logo_upload_token(payload: SiteConfigLogoUploadTokenIn, curre
 
 @router.post("/logo/upload", summary="上传站点 Logo")
 async def upload_site_logo(file: UploadFile = File(...), current_user: User = DependAuth):
-    _ = current_user
-    return Success(data=await media_storage_service.upload(file, "logo"))
+    return Success(data=await media_storage_service.upload(file, "logo", current_user.id))
 
 
 @router.post("/logo/delete", summary="删除站点 Logo 文件")
 async def delete_site_logo(payload: SiteConfigLogoDeleteIn, current_user: User = DependAuth):
-    _ = current_user
-    await site_config_controller.delete_logo_file(payload.logo_key)
+    await delete_owned_transient_media_keys([payload.logo_key], current_user.id)
     return Success(msg="Deleted Successfully")
 
 

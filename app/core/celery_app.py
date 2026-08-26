@@ -12,6 +12,22 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
 )
 
+beat_schedule = {
+    "certificate-monitor-refresh-statuses": {
+        "task": "certificate_monitor.refresh_statuses",
+        "schedule": settings.CERT_MONITOR_INTERVAL_SECONDS,
+    },
+    "media-cleanup-orphan-files": {
+        "task": "media.cleanup_orphan_files",
+        "schedule": settings.MEDIA_ORPHAN_CLEANUP_INTERVAL_SECONDS,
+    },
+}
+if settings.PRODUCT_IMPORT_ENABLED:
+    beat_schedule["product-import-cleanup-temp-files"] = {
+        "task": "product_import.cleanup_temp_files",
+        "schedule": settings.PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS,
+    }
+
 celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_track_started=True,
@@ -20,20 +36,7 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="Asia/Shanghai",
     enable_utc=False,
-    beat_schedule={
-        "certificate-monitor-refresh-statuses": {
-            "task": "certificate_monitor.refresh_statuses",
-            "schedule": settings.CERT_MONITOR_INTERVAL_SECONDS,
-        },
-        "product-import-cleanup-temp-files": {
-            "task": "product_import.cleanup_temp_files",
-            "schedule": settings.PRODUCT_IMPORT_CLEANUP_INTERVAL_SECONDS,
-        },
-        "media-cleanup-orphan-files": {
-            "task": "media.cleanup_orphan_files",
-            "schedule": settings.MEDIA_ORPHAN_CLEANUP_INTERVAL_SECONDS,
-        },
-    },
+    beat_schedule=beat_schedule,
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])

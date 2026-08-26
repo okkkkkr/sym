@@ -14,7 +14,6 @@ from fastapi import HTTPException
 
 from app.settings import settings
 
-
 QINIU_REGION_UPLOAD_HOSTS = {
     "z0": "https://up.qiniup.com",
     "cn-east-1": "https://up.qiniup.com",
@@ -38,31 +37,31 @@ PRODUCT_MEDIA_TYPE_RULES = {
     "logo": {
         "prefix": "logo",
         "file_prefix": "logo",
-        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"},
         "mime_prefix": "image/",
     },
     "contact_qr": {
         "prefix": "contacts",
         "file_prefix": "qr",
-        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"},
         "mime_prefix": "image/",
     },
     "cover": {
         "prefix": "items/images",
         "file_prefix": "img",
-        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"},
         "mime_prefix": "image/",
     },
     "image": {
         "prefix": "items/images",
         "file_prefix": "img",
-        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"},
         "mime_prefix": "image/",
     },
     "home_layout": {
         "prefix": "home-layout",
         "file_prefix": "layout",
-        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif"},
+        "extensions": {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"},
         "mime_prefix": "image/",
     },
     "video": {
@@ -163,8 +162,7 @@ class ProductMediaUploadService:
     def _build_upload_token(object_key: str) -> str:
         deadline = int(
             (
-                datetime.now(timezone.utc)
-                + timedelta(seconds=ProductMediaUploadService.token_expires_in_seconds)
+                datetime.now(timezone.utc) + timedelta(seconds=ProductMediaUploadService.token_expires_in_seconds)
             ).timestamp()
         )
         put_policy = {

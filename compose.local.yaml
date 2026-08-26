@@ -3,6 +3,8 @@ services:
     env_file: !override
       - .env.local-docker
     environment:
+      APP_ENV: development
+      PRODUCT_IMPORT_ENABLED: "true"
       API_IP_RATE_LIMIT: "500"
       API_IP_RATE_WINDOW_SECONDS: "1"
       PRODUCT_IMPORT_CHUNK_SIZE: "20971520"
@@ -10,10 +12,16 @@ services:
   worker:
     env_file: !override
       - .env.local-docker
+    environment:
+      APP_ENV: development
+      PRODUCT_IMPORT_ENABLED: "true"
 
   beat:
     env_file: !override
       - .env.local-docker
+    environment:
+      APP_ENV: development
+      PRODUCT_IMPORT_ENABLED: "true"
 
   nginx:
     build:
@@ -26,3 +34,7 @@ services:
     volumes: !override
       - uploads_data:/usr/share/nginx/uploads:ro
       - ./deploy/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+secrets:
+  admin_htpasswd:
+    file: ./deploy/security/admin.htpasswd.example

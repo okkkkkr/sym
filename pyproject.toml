@@ -74,6 +74,7 @@ dependencies = [
     "uvloop==0.21.0 ; sys_platform != 'win32'",
     "boto3>=1.43.34",
     "qiniu>=7.17.0",
+    "pillow==11.1.0",
 ]
 
 [tool.black]

@@ -3,8 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.log import logger
-from app.models.admin import Contact, HomeLayoutItem, Product, SiteConfig
-from app.services.media_cleanup import normalize_media_key, normalize_media_keys
+from app.services.media_cleanup import (
+    collect_referenced_media_keys,
+    normalize_media_key,
+)
 from app.services.storage import get_storage_provider
 from app.settings import settings
 
@@ -37,31 +39,7 @@ class OrphanMediaCleanupStats:
 
 class MediaOrphanCleanupService:
     async def collect_referenced_keys(self) -> set[str]:
-        referenced_keys = set()
-        referenced_keys.update(
-            normalize_media_keys(await SiteConfig.all().exclude(logo_key="").values_list("logo_key", flat=True))
-        )
-        referenced_keys.update(
-            normalize_media_keys(
-                await Contact.filter(is_deleted=False).exclude(qr_image_url="").values_list("qr_image_url", flat=True)
-            )
-        )
-        referenced_keys.update(
-            normalize_media_keys(await HomeLayoutItem.exclude(image="").values_list("image", flat=True))
-        )
-        product_media_keys = await Product.all().values("cover_image_key", "image_keys", "video_keys")
-        referenced_keys.update(
-            normalize_media_keys(
-                key
-                for item in product_media_keys
-                for key in [
-                    item.get("cover_image_key"),
-                    *(item.get("image_keys") or []),
-                    *(item.get("video_keys") or []),
-                ]
-            )
-        )
-        return referenced_keys
+        return await collect_referenced_media_keys()
 
     async def cleanup_orphan_files(self) -> dict:
         stats = {

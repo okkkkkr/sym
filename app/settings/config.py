@@ -1,8 +1,9 @@
 import os
+import secrets
 import typing
 from json import loads as json_loads
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_METHODS: typing.List = ["*"]
     CORS_ALLOW_HEADERS: typing.List = ["*"]
 
-    DEBUG: bool = True
+    DEBUG: bool = False
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 9999
 
@@ -94,6 +95,12 @@ class Settings(BaseSettings):
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
     PRODUCT_IMPORT_MAX_FILE_SIZE: int = 10 * 1024 * 1024 * 1024
+    PRODUCT_IMPORT_ENABLED: bool = False
+    PRODUCT_IMPORT_MAX_UNCOMPRESSED_SIZE: int = 4 * 1024 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_ENTRIES: int = 10_000
+    PRODUCT_IMPORT_MAX_ENTRY_SIZE: int = 250 * 1024 * 1024
+    PRODUCT_IMPORT_MAX_COMPRESSION_RATIO: int = 100
+    PRODUCT_IMPORT_DISK_RESERVE_SIZE: int = 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     VIDEO_UPLOAD_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "video-processing")
     PRODUCT_IMPORT_CHUNK_SIZE: int = 20 * 1024 * 1024
@@ -116,10 +123,10 @@ class Settings(BaseSettings):
     ]
     STORAGE_DRIVER: str = ""
     STORAGE_PROVIDER: str = ""
-    MEDIA_UPLOAD_MAX_FILE_SIZE: int = 500 * 1024 * 1024
+    MEDIA_UPLOAD_MAX_FILE_SIZE: int = 250 * 1024 * 1024
     LOCAL_STORAGE_ROOT: str = os.path.join(BASE_DIR, "uploads")
     LOCAL_STORAGE_PUBLIC_BASE_URL: str = "/uploads"
-    LOCAL_STORAGE_MAX_FILE_SIZE: int = 500 * 1024 * 1024
+    LOCAL_STORAGE_MAX_FILE_SIZE: int = 250 * 1024 * 1024
     S3_ENDPOINT_URL: str = ""
     S3_BUCKET: str = ""
     S3_REGION: str = ""
@@ -155,22 +162,36 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "sym"
-    POSTGRES_PASSWORD: str = "sym"
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "sym"
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
-    LOGIN_FAILURE_LIMIT: int = 5
-    LOGIN_FAILURE_WINDOW_SECONDS: int = 3600
+    LOGIN_IP_FAILURE_LIMIT: int = 20
+    LOGIN_USERNAME_FAILURE_LIMIT: int = 10
+    LOGIN_FAILURE_WINDOW_SECONDS: int = 900
+    LOGIN_BLOCK_SECONDS: int = 3600
     API_IP_RATE_WINDOW_SECONDS: int = 60
     API_IP_RATE_LIMIT: int = 300
-    API_IP_BLOCK_SECONDS: int = 900
+    API_IP_BLOCK_SECONDS: int = 3600
     SITE_VISIT_DEDUP_SECONDS: int = 1800
     TRACK_ACTION_DEDUP_SECONDS: int = 300
-    SECRET_KEY: str = "3488a63e1765035d386f05409663f55c83bfae3b3c61a932744b20ad14244dcf"  # openssl rand -hex 32
+    SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 day
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     DATETIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+
+    @model_validator(mode="after")
+    def validate_secrets(self):
+        if self.APP_ENV == "production":
+            missing = [name for name in ("SECRET_KEY", "POSTGRES_PASSWORD") if not getattr(self, name)]
+            if missing:
+                raise ValueError(f"Production configuration is missing required values: {', '.join(missing)}")
+            if self.DEBUG:
+                raise ValueError("DEBUG must be false in production")
+        elif not self.SECRET_KEY:
+            self.SECRET_KEY = secrets.token_hex(32)
+        return self
 
     @property
     def TORTOISE_ORM(self) -> dict:

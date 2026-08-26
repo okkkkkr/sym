@@ -14,12 +14,21 @@ class User(BaseModel, TimestampMixin):
     password = fields.CharField(max_length=128, null=True, description="密码")
     is_active = fields.BooleanField(default=True, description="是否激活", index=True)
     is_superuser = fields.BooleanField(default=False, description="是否为超级管理员", index=True)
+    token_version = fields.IntField(default=0, description="令牌撤销版本")
     last_login = fields.DatetimeField(null=True, description="最后登录时间", index=True)
     roles = fields.ManyToManyField("models.Role", related_name="user_roles")
     dept_id = fields.IntField(null=True, description="部门ID", index=True)
 
     class Meta:
         table = "user"
+
+
+class MediaUpload(BaseModel, TimestampMixin):
+    object_key = fields.CharField(max_length=500, unique=True, description="上传对象 Key", index=True)
+    uploaded_by = fields.IntField(description="上传用户 ID", index=True)
+
+    class Meta:
+        table = "media_upload"
 
 
 class Role(BaseModel, TimestampMixin):
@@ -225,9 +234,7 @@ class Tag(BaseModel, TimestampMixin):
 
 class Brand(BaseModel, TimestampMixin):
     categories = fields.ManyToManyField("models.Category", related_name="brands")
-    hot_categories = fields.ManyToManyField(
-        "models.Category", related_name="hot_brands", through="brand_hot_category"
-    )
+    hot_categories = fields.ManyToManyField("models.Category", related_name="hot_brands", through="brand_hot_category")
     name = fields.CharField(max_length=100, description="品牌名称", index=True)
     desc = fields.CharField(max_length=255, null=True, description="品牌描述")
     search_count = fields.IntField(default=0, description="搜索次数", index=True)
