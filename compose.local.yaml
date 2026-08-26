@@ -2,6 +2,10 @@ services:
   api:
     env_file: !override
       - .env.local-docker
+    environment:
+      API_IP_RATE_LIMIT: "500"
+      API_IP_RATE_WINDOW_SECONDS: "1"
+      PRODUCT_IMPORT_CHUNK_SIZE: "20971520"
 
   worker:
     env_file: !override

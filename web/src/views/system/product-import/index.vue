@@ -23,7 +23,7 @@ const uploadAbortController = ref(null)
 const systemTask = ref(null)
 const pollingTimer = ref(null)
 
-const chunkSize = 5 * 1024 * 1024
+const chunkSize = 20 * 1024 * 1024
 const maxFileSize = 10 * 1024 * 1024 * 1024
 const uploadCachePrefix = 'product-import-upload:'
 const activeTaskStatuses = ['uploading', 'pending', 'running']

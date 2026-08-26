@@ -92,7 +92,7 @@ services:
         "app.core.celery_app.celery_app",
         "beat",
         "--loglevel=INFO",
-        "--pidfile=/tmp/celerybeat.pid",
+        "--pidfile=",
         "--schedule=/tmp/celerybeat-schedule"
       ]
     volumes:

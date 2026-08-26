@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     PRODUCT_IMPORT_MAX_FILE_SIZE: int = 10 * 1024 * 1024 * 1024
     PRODUCT_IMPORT_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "product-import")
     VIDEO_UPLOAD_TMP_DIR: str = os.path.join(BASE_DIR, "tmp", "video-processing")
-    PRODUCT_IMPORT_CHUNK_SIZE: int = 5 * 1024 * 1024
+    PRODUCT_IMPORT_CHUNK_SIZE: int = 20 * 1024 * 1024
     PRODUCT_IMPORT_MAX_CONCURRENCY: int = 2
     PRODUCT_IMPORT_MAX_WORKERS: int = 4
     PRODUCT_IMPORT_CLEANUP_ENABLED: bool = True

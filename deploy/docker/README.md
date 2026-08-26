@@ -12,6 +12,7 @@
   - API、worker、beat 统一加载本地生成的 `.env.local-docker`
   - Nginx 对外端口改为 `6868:80`
   - Nginx 使用 [nginx.conf](nginx.conf)，避免 `localhost` 被重定向到生产域名
+  - 本地 Nginx 与 API 请求限额为每秒 500 次；好物导入使用 20 MiB 分片并关闭请求体缓冲
   - 管理后台构建时使用 `VITE_PUBLIC_PATH=/admin/`，避免 `/admin/` 页面错误加载官网 `/assets/*`
   - 两个前端构建时都改为调用本地反代的 `/api/v1`
 
