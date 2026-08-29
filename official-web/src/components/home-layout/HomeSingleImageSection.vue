@@ -77,11 +77,13 @@ const hero = module.items?.[0] || {}
   line-height: 0.94;
   font-weight: 800;
   letter-spacing: -0.05em;
+  opacity: 0.8;
 }
 
 .home-single p {
   max-width: 520px;
   font-size: 18px;
+  opacity: 0.8;
 }
 
 .home-single__button {
