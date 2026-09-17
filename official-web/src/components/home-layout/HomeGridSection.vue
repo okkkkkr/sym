@@ -66,7 +66,7 @@ defineProps({
 .home-grid__image-wrap {
   position: relative;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: 0;
   background: #ece8df;
 }
 
@@ -135,7 +135,7 @@ defineProps({
   }
 
   .home-grid__image {
-    border-radius: 22px;
+    border-radius: 0;
   }
 }
 </style>

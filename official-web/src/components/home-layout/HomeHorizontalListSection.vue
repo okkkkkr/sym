@@ -38,8 +38,8 @@ function handleWheel(event) {
           <span v-if="item.badge" class="home-horizontal__badge">{{ item.badge }}</span>
         </div>
         <div class="home-horizontal__meta">
-          <strong v-if="item.description">{{ item.description }}</strong>
-          <p v-if="item.title">{{ item.title }}</p>
+          <strong v-if="item.title">{{ item.title }}</strong>
+          <p v-if="item.description">{{ item.description }}</p>
           <span v-if="item.action?.text">{{ item.action.text }}</span>
         </div>
       </a>
@@ -55,7 +55,7 @@ function handleWheel(event) {
 .home-horizontal__list {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: calc((100% - 2.2 * 24px) / 3.2);
+  grid-auto-columns: calc((100% - 4 * 24px) / 5);
   gap: 24px;
   overflow-x: auto;
   padding-bottom: 6px;
@@ -69,18 +69,22 @@ function handleWheel(event) {
 
 .home-horizontal__card {
   display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .home-horizontal__media {
   position: relative;
+  height: 440px;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: 0;
   background: #ece8df;
 }
 
 .home-horizontal__image {
+  display: block;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  height: 100%;
   object-fit: cover;
   transform: scale(1);
   transition: transform 0.4s ease;
@@ -130,18 +134,18 @@ function handleWheel(event) {
 
 @media (max-width: 1024px) {
   .home-horizontal__list {
-    grid-auto-columns: calc((100% - 1.2 * 20px) / 2.2);
+    grid-auto-columns: calc((100% - 4 * 20px) / 5);
     gap: 20px;
   }
 }
 
-@media (max-width: 768px) {
+@media (width < 1000px) {
   .home-horizontal {
     padding: 24px 16px 0;
   }
 
   .home-horizontal__list {
-    grid-auto-columns: calc((100% - 0.18 * 16px) / 1.18);
+    grid-auto-columns: calc((100% - 16px) / 2);
     gap: 16px;
   }
 }

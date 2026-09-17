@@ -48,7 +48,7 @@ const module = props.module
   position: relative;
   display: block;
   overflow: hidden;
-  border-radius: 34px;
+  border-radius: 0;
 }
 
 .home-carousel__image {
@@ -116,7 +116,7 @@ const module = props.module
 
   .home-carousel__slide,
   .home-carousel__image {
-    border-radius: 24px;
+    border-radius: 0;
   }
 
   .home-carousel__image {

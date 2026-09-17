@@ -11,7 +11,7 @@ const hero = module.items?.[0] || {}
 </script>
 
 <template>
-  <section class="home-single page-container">
+  <section class="home-single">
     <a
       class="home-single__card"
       :href="hero.action?.link || undefined"
@@ -29,21 +29,20 @@ const hero = module.items?.[0] || {}
 </template>
 
 <style scoped>
-.home-single {
-  padding: 24px 24px 0;
-}
-
 .home-single__card {
   position: relative;
   display: block;
+  height: 85vh;
+  min-height: 600px;
   overflow: hidden;
-  border-radius: 34px;
+  border-radius: 0;
   background: #d9d2c7;
 }
 
 .home-single__image {
+  display: block;
   width: 100%;
-  aspect-ratio: 16 / 7;
+  height: 100%;
   object-fit: cover;
   transform: scale(1);
   transition: transform 0.45s ease;
@@ -106,14 +105,17 @@ const hero = module.items?.[0] || {}
   }
 }
 
-@media (max-width: 640px) {
-  .home-single {
-    padding: 12px 12px 0;
+@media (width < 1000px) {
+  .home-single__card {
+    height: 60vh;
+    min-height: 400px;
   }
+}
 
+@media (max-width: 640px) {
   .home-single__card,
   .home-single__image {
-    border-radius: 20px;
+    border-radius: 0;
   }
 
   .home-single__overlay {
