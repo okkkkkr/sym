@@ -144,6 +144,10 @@ function handleWheel(event) {
     padding: 24px 16px 0;
   }
 
+  .home-horizontal__media {
+    height: 320px;
+  }
+
   .home-horizontal__list {
     grid-auto-columns: calc((100% - 16px) / 2);
     gap: 16px;

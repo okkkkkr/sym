@@ -32,7 +32,7 @@ const hero = module.items?.[0] || {}
 .home-single__card {
   position: relative;
   display: block;
-  height: 85vh;
+  height: 70vh;
   min-height: 600px;
   overflow: hidden;
   border-radius: 0;
